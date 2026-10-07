@@ -1,0 +1,18 @@
+# Flags for clangd in src/. clangd resolves relative -I paths from the folder
+# of the file being edited, so the ../ ones are for files in src/*/.
+CompileFlags:
+  Add:
+    - -std=c99
+    - -D_DEFAULT_SOURCE
+    - -Wall
+    - -Wextra
+    - -ggdb
+    - -I.
+    - -Ithirdparty/flag
+    - -Ithirdparty/cum
+    - -Ithirdparty/conf
+    - -I..
+    - -I../thirdparty/flag
+    - -I../thirdparty/cum
+    - -I../thirdparty/conf
+    - -I/usr/include/lua5.1

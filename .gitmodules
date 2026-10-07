@@ -1,0 +1,9 @@
+[submodule "src/thirdparty/flag"]
+	path = src/thirdparty/flag
+	url = https://github.com/hugoocoto/flag.h
+[submodule "src/thirdparty/cum"]
+	path = src/thirdparty/cum
+	url = https://github.com/hugoocoto/cum.h
+[submodule "src/thirdparty/conf"]
+	path = src/thirdparty/conf
+	url = https://github.com/hugoocoto/conf.h

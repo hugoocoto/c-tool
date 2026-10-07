@@ -1,0 +1,9 @@
+/build/
+/template
+/*.AppImage
+/*-static
+/*.tar.gz
+/CHANGELOG.md
+/*.1
+/VERSION
+docs/**/*.pdf

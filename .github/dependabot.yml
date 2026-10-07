@@ -1,0 +1,19 @@
+# Weekly pull requests to update the GitHub Actions and the submodules in
+# src/thirdparty/. CI tests them like any other pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      submodules:
+        patterns: ["*"]

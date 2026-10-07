@@ -1,0 +1,208 @@
+name: CI
+
+# Every push and PR runs the tests. A push to main also refreshes the
+# "nightly" release, and a v* tag (see scripts/release.sh) makes a release of
+# its own. Both have, for x86_64 and aarch64, the AppImage and a static (musl)
+# binary, plus a source tarball, the shell completions, the man page, the docs
+# PDFs, the changelog and their checksums, and are only published if every test passes.
+# Their notes are their part of the changelog (scripts/changelog.sh).
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DEPS: liblua5.1-0-dev
+
+jobs:
+  test:
+    # Memory errors, leaks and undefined behavior in one run, data races in
+    # the other (ThreadSanitizer can't be combined with AddressSanitizer)
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+        sanitize: ["address,undefined", thread]
+    name: test (${{ matrix.cc }}, ${{ matrix.sanitize }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0 # git describe needs the tags, for the version
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y $DEPS
+
+      # The runners randomize addresses more than the sanitizers can handle
+      # ("FATAL: ThreadSanitizer: unexpected memory mapping")
+      - name: Make the sanitizers work
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Build
+        run: make CC=${{ matrix.cc }}
+
+      - name: Test
+        run: make test CC=${{ matrix.cc }} SANITIZE=${{ matrix.sanitize }}
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      # The version in the Makefile: others may format differently
+      - name: Install clang-format
+        run: pip install "clang-format==$(sed -n 's/^CLANG_FORMAT_VERSION := //p' Makefile)"
+
+      - name: Check the format
+        run: make check-format
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: typst-community/setup-typst@v5
+        with:
+          typst-version: latest
+
+      - name: Build PDFs
+        run: make docs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs
+          path: docs/**/*.pdf
+          if-no-files-found: ignore
+
+  package:
+    # The oldest runners: the AppImage needs a glibc at least as new as the
+    # one it was built with, so this makes it run on more systems. The static
+    # binary has no such limit.
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+            make: appimage static dist completions man # the arch-independent ones only once
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
+            make: appimage static
+    name: package (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y $DEPS musl-tools
+
+      - name: Build
+        run: make ${{ matrix.make }}
+
+      # What gets released works, before it's released
+      - name: Check the release files
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1 # the runners have no FUSE
+        run: |
+          shopt -s nullglob
+          version=$(make -s version)
+          for bin in ./*-static ./*.AppImage; do
+            echo "$bin --version: $("$bin" --version)"
+            [[ $("$bin" --version) == *" $version" ]]
+          done
+          for bin in ./*-static; do
+            file -b "$bin" | grep -E 'statically linked|static-pie linked'
+            "$bin" --config config.lua
+          done
+          for man in ./*.1; do
+            grep -q "$version" "$man"
+          done
+          # The source tarball builds on its own, and knows its version
+          for src in ./*.tar.gz; do
+            [[ $src != *-completions.tar.gz ]] || continue
+            tar -xzf "$src" -C "$RUNNER_TEMP"
+            dir=$RUNNER_TEMP/$(basename "$src" .tar.gz)
+            make -C "$dir"
+            name=$(basename "$src" "-$version.tar.gz")
+            echo "built from $src: $("$dir/$name" --version)"
+            [[ $("$dir/$name" --version) == "$name $version" ]]
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.arch }}
+          path: |
+            *.AppImage
+            *-static
+            *.tar.gz
+            *.1
+
+  release:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [test, format, docs, package]
+    # Never stopped halfway: nightly is deleted and made again
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Changelog
+        run: |
+          scripts/changelog.sh >release/CHANGELOG.md
+          # The release's notes are its own section, without its title line
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            scripts/changelog.sh "$GITHUB_REF_NAME" | tail -n +3 >notes.md
+          else
+            changes=$(scripts/changelog.sh HEAD | tail -n +3)
+            {
+              echo "Built from $GITHUB_SHA on $(date -u '+%Y-%m-%d %H:%M UTC'). It changes with every push to main."
+              echo
+              echo "${changes:-No changes since the last release.}"
+            } >notes.md
+          fi
+
+      - name: Checksums
+        run: |
+          # PDFs from docs/ subfolders keep their folders: flatten them
+          find release -mindepth 2 -type f -exec mv -t release {} +
+          find release -mindepth 1 -type d -delete
+          cd release && sha256sum * >SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+            exit
+          fi
+          # The tag moves here and the release is made again, so it has this
+          # build's date (an edited release keeps its first one)
+          version=$(git describe --tags --match 'v*' --always)
+          git tag -f nightly "$GITHUB_SHA"
+          git push -f origin nightly
+          if gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete nightly --repo "$GITHUB_REPOSITORY" --yes # keeps the tag
+          fi
+          gh release create nightly release/* --repo "$GITHUB_REPOSITORY" --prerelease --verify-tag \
+            --title "Nightly $version" --notes-file notes.md

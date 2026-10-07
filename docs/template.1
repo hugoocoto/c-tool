@@ -1,0 +1,54 @@
+.TH TEMPLATE 1 "@DATE@" "template @VERSION@" "User Commands"
+.SH NAME
+template \- greet everyone listed in a Lua config
+.SH SYNOPSIS
+.B template
+.RB [ \-h ]
+.RB [ \-v ]
+.RB [ \-c
+.IR file ]
+.SH DESCRIPTION
+.B template
+prints a greeting for every name in its config, as many times as the config
+says.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show the help and exit.
+.TP
+.BR \-v ", " \-\-version
+Show the version and exit.
+.TP
+.BR \-c ", " \-\-config " " \fIfile\fR
+Read the config from
+.I file
+instead of the default ones.
+.SH FILES
+The first of these that exists is the config. If none does, the defaults are
+used.
+.TP
+.I $XDG_CONFIG_HOME/template/config.lua
+.RI ( ~/.config/template/config.lua
+if XDG_CONFIG_HOME is not set)
+.TP
+.I ./config.lua
+.SH CONFIGURATION
+The config is a Lua 5.1 file that defines a
+.B Config
+table. Every field is optional:
+.PP
+.RS
+.nf
+Config = {
+    greeting = "Hello",           -- default "Hello"
+    times = 1,                    -- default 1
+    names = { "world", "you" },   -- default { "world" }
+}
+.fi
+.RE
+.SH EXIT STATUS
+0 on success, 1 if the arguments or the config are wrong.
+.SH AUTHOR
+Hugo Coto Florez <hugocoto100305@gmail.com>
+.SH SEE ALSO
+.BR lua (1)

@@ -1,0 +1,41 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: The command you ran and its full output.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Config
+      description: Your config.lua, if it matters (remove anything private).
+      render: lua
+  - type: input
+    attributes:
+      label: Version
+      description: The output of `template --version`.
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: How you installed it
+      options:
+        - install.sh (curl | bash)
+        - static binary from a release
+        - AppImage
+        - built from source
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Distro and architecture
+      placeholder: Arch Linux, x86_64

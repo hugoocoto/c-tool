@@ -1,0 +1,13 @@
+# Flags for clangd in test/, like src/.clangd
+CompileFlags:
+  Add:
+    - -std=c99
+    - -D_DEFAULT_SOURCE
+    - -Wall
+    - -Wextra
+    - -ggdb
+    - -I../src
+    - -I../src/thirdparty/flag
+    - -I../src/thirdparty/cum
+    - -I../src/thirdparty/conf
+    - -I/usr/include/lua5.1
