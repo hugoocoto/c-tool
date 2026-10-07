@@ -1,8 +1,8 @@
 # template
 
-[![CI](https://github.com/hugoocoto/template/actions/workflows/ci.yml/badge.svg)](https://github.com/hugoocoto/template/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/hugoocoto/template)](https://github.com/hugoocoto/template/releases/latest)
-[![License](https://img.shields.io/github/license/hugoocoto/template)](LICENSE)
+[![CI](https://github.com/hugoocoto/c-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/hugoocoto/c-tool/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hugoocoto/c-tool)](https://github.com/hugoocoto/c-tool/releases/latest)
+[![License](https://img.shields.io/github/license/hugoocoto/c-tool)](LICENSE)
 
 Greet everyone listed in a Lua config.
 
@@ -22,7 +22,7 @@ Greet everyone listed in a Lua config.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
 ```
 
 This installs the latest release in `~/.local`: the static binary for your
@@ -32,11 +32,11 @@ completions, after checking them against the release's `SHA256SUMS`. Being
 static, it needs nothing else installed. Arguments go after `bash -s --`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | bash -s -- v1.2.3     # that release
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | bash -s -- nightly    # the last commit on main
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | bash -s -- --appimage # the AppImage instead
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | bash -s -- uninstall
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | sudo PREFIX=/usr/local bash
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- v1.2.3     # that release
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- nightly    # the last commit on main
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --appimage # the AppImage instead
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | sudo PREFIX=/usr/local bash
 ```
 
 `--appimage` installs `template-<arch>.AppImage` as `template` instead of the
@@ -132,7 +132,7 @@ Needs a C compiler, make and Lua 5.1 (or LuaJIT) with its headers:
 | Debian/Ubuntu | `liblua5.1-0-dev`       | `musl-tools`      |
 
 ```sh
-git clone --recursive https://github.com/hugoocoto/template
+git clone --recursive https://github.com/hugoocoto/c-tool template
 cd template
 make
 ./template --version

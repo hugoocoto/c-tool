@@ -20,7 +20,7 @@ rep() { printf '%s' "$1" | sed 's/[&/\]/\\&/g'; }
 
 # The placeholders, as they are in the template
 old_name=template
-old_slug=hugoocoto/template
+old_slug=hugoocoto/c-tool
 old_author="Hugo Coto Florez"
 old_email=hugocoto100305@gmail.com
 old_desc="Greet everyone listed in a Lua config"

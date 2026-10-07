@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install template from its GitHub releases, nothing to build:
 #
-#   curl -fsSL https://raw.githubusercontent.com/hugoocoto/template/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
 #
 # It installs the static binary for this machine (template-x86_64-static or
 # template-aarch64-static, from `uname -m`) to ~/.local/bin, the man page and
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 NAME=template
-REPO=${REPO:-hugoocoto/template}
+REPO=${REPO:-hugoocoto/c-tool}
 GITHUB=${GITHUB:-https://github.com}
 
 PREFIX=${PREFIX:-$HOME/.local}
