@@ -1,7 +1,9 @@
-# Project name: the binary, ~/.config/$(NAME)/, the man page, the AppImage
-# and the release assets. The description is for the AppImage's menu entry.
+# Project name: the binary, ~/.config/$(NAME)/ and everything named after it
 NAME := __NAME__
+# template-init: begin appimage
+# For the AppImage's menu entry
 DESCRIPTION := Greet everyone listed in a Lua config
+# template-init: end appimage
 
 # vX.Y.Z[-N-gHASH][-dirty] from git, else the VERSION file that `make dist`
 # puts in tarballs, else nothing (and the code falls back to "unknown")
@@ -10,7 +12,7 @@ ifeq ($(VERSION),)
 VERSION := $(shell cat VERSION 2>/dev/null)
 endif
 DATE := $(shell git log -1 --format=%cs 2>/dev/null || date +%F)
-# Every date the build writes (tarballs, the AppImage) is the last commit's,
+# Every date the build writes (tarballs, packages) is the last commit's,
 # so building a commit again gives the same files
 SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
 export SOURCE_DATE_EPOCH
@@ -19,7 +21,10 @@ TAR := tar --sort=name --mtime=@$(SOURCE_DATE_EPOCH) --owner=0 --group=0 --numer
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
+# template-init: begin man
 MANDIR ?= $(PREFIX)/share/man/man1
+# template-init: end man
+# template-init: begin completions
 BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR ?= $(PREFIX)/share/zsh/site-functions
 # fish only looks for a user's completions in its own config dir
@@ -28,6 +33,7 @@ FISHCOMPDIR ?= $(HOME)/.config/fish/completions
 else
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 endif
+# template-init: end completions
 
 BUILD ?= build
 BIN ?= $(NAME)
@@ -74,7 +80,8 @@ $(shell mkdir -p $(BUILD))
 $(file > $(BUILD)/.flags,$(FLAGS))
 endif
 
-.PHONY: all debug test analyze format check-format docs man install uninstall appimage static dist completions changelog version hooks clean distclean
+.PHONY: all debug test analyze format check-format install uninstall dist version clean distclean
+.PHONY: release-arch release-common
 
 all: $(BIN)
 
@@ -89,7 +96,6 @@ $(BUILD)/%.o: %.c $(BUILD)/.flags
 
 debug:
 	$(MAKE) CFLAGS='$(DEBUG_FLAGS)' LDFLAGS='$(SAN_FLAGS)'
-
 # The program and every test/*.c are built with the sanitizers, in their own
 # build dir so the normal build is left alone. scripts/test.sh runs the tests.
 comma := ,
@@ -130,32 +136,74 @@ format:
 check-format:
 	$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_SRC)
 
+# template-init: begin docs
+.PHONY: docs
 docs:
 	@find docs -name '*.typ' | while read -r f; do echo "typst compile $$f"; typst compile "$$f" || exit 1; done
+# template-init: end docs
 
+# template-init: begin man
 # The man page with its version and date, $(NAME).1 (attached to releases)
+.PHONY: man
 man: $(BUILD)/$(NAME).1
 	cp $< $(NAME).1
 
 $(BUILD)/$(NAME).1: docs/$(NAME).1 $(BUILD)/.flags
 	sed 's/@VERSION@/$(or $(VERSION),unknown)/; s/@DATE@/$(DATE)/' $< >$@
 
-install: $(NAME) $(BUILD)/$(NAME).1
+install: $(BUILD)/$(NAME).1
+# template-init: end man
+
+install: $(NAME)
 	install -Dm755 $(NAME) $(DESTDIR)$(BINDIR)/$(NAME)
+# template-init: begin man
 	install -Dm644 $(BUILD)/$(NAME).1 $(DESTDIR)$(MANDIR)/$(NAME).1
+# template-init: end man
+# template-init: begin completions
 	install -Dm644 completions/$(NAME).bash $(DESTDIR)$(BASHCOMPDIR)/$(NAME)
 	install -Dm644 completions/_$(NAME) $(DESTDIR)$(ZSHCOMPDIR)/_$(NAME)
 	install -Dm644 completions/$(NAME).fish $(DESTDIR)$(FISHCOMPDIR)/$(NAME).fish
+# template-init: end completions
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(MANDIR)/$(NAME).1 $(DESTDIR)$(BASHCOMPDIR)/$(NAME) \
-		$(DESTDIR)$(ZSHCOMPDIR)/_$(NAME) $(DESTDIR)$(FISHCOMPDIR)/$(NAME).fish
+	rm -f $(DESTDIR)$(BINDIR)/$(NAME)
+# template-init: begin man
+	rm -f $(DESTDIR)$(MANDIR)/$(NAME).1
+# template-init: end man
+# template-init: begin completions
+	rm -f $(DESTDIR)$(BASHCOMPDIR)/$(NAME) $(DESTDIR)$(ZSHCOMPDIR)/_$(NAME) $(DESTDIR)$(FISHCOMPDIR)/$(NAME).fish
+# template-init: end completions
 
-# Bundles every shared library the binary needs (except glibc and friends, see
-# linuxdeploy's excludelist) into $(NAME)-$(ARCH).AppImage, for the machine's
-# arch (x86_64 or aarch64)
+# What CI packages and releases: release-arch on each arch, release-common
+# (what's the same on every arch) once
+release-common: dist
+# template-init: begin man
+release-common: man
+# template-init: end man
+# template-init: begin completions
+release-common: completions
+# template-init: end completions
+# template-init: begin appimage
+release-arch: appimage
+# template-init: end appimage
+# template-init: begin static
+release-arch: static
+# template-init: end static
+
+# Packages are built for the machine's arch (x86_64 or aarch64), with what
+# they download
 ARCH := $(shell uname -m)
 TOOLS := $(BUILD)/tools
+# Downloaded once into $(DL), which CI caches, and checked before every use
+DL := $(TOOLS)/downloads
+
+# $(call check,FILE,SHA256): stop, and remove FILE, unless it has that checksum
+check = @echo '$(2)  $(1)' | sha256sum -c --quiet || { rm -f $(1); echo "$(1): wrong checksum, removed it" >&2; exit 1; }
+
+# template-init: begin appimage
+# Bundles every shared library the binary needs (except glibc and friends, see
+# linuxdeploy's excludelist) into $(NAME)-$(ARCH).AppImage
+.PHONY: appimage
 APPDIR := $(BUILD)/AppDir
 APPIMAGE := $(NAME)-$(ARCH).AppImage
 # The tools are AppImages too: run them without FUSE (CI has none)
@@ -163,9 +211,8 @@ export APPIMAGE_EXTRACT_AND_RUN = 1
 
 # The tools, pinned to a release and checked against its checksums (from
 # GitHub's asset digests) before every use: they end up in what's released.
-# Downloaded once into $(DL), which CI caches. The AppImage runtime is pinned
-# too, or appimagetool would download its latest one.
-DL := $(TOOLS)/downloads
+# The AppImage runtime is pinned too, or appimagetool would download its
+# latest one.
 LINUXDEPLOY_VERSION := 1-alpha-20251107-1
 LINUXDEPLOY_SHA256_x86_64 := c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
 LINUXDEPLOY_SHA256_aarch64 := 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
@@ -182,9 +229,6 @@ RUNTIME := $(DL)/runtime-$(RUNTIME_VERSION)-$(ARCH)
 # linuxdeploy's own strip is too old for the libraries of newer distros
 # (.relr.dyn sections), so the system's strips what it bundles
 STRIP ?= strip
-
-# $(call check,FILE,SHA256): stop, and remove FILE, unless it has that checksum
-check = @echo '$(2)  $(1)' | sha256sum -c --quiet || { rm -f $(1); echo "$(1): wrong checksum, removed it" >&2; exit 1; }
 
 appimage: $(APPIMAGE)
 
@@ -214,10 +258,13 @@ $(APPIMAGETOOL):
 $(RUNTIME):
 	@mkdir -p $(@D)
 	curl -fsSL -o $@ https://github.com/AppImage/type2-runtime/releases/download/$(RUNTIME_VERSION)/runtime-$(ARCH)
+# template-init: end appimage
 
+# template-init: begin static
 # Fully static binary, $(NAME)-$(ARCH)-static, that runs on any Linux of its
 # arch. Distro Lua libraries are built for glibc, so Lua is built from source
 # with musl (needs musl-gcc: the musl package on Arch, musl-tools on Debian).
+.PHONY: static
 MUSL_CC ?= musl-gcc
 STATIC := $(NAME)-$(ARCH)-static
 LUA_VERSION := 5.4.9
@@ -243,6 +290,7 @@ $(LUA_SRC)/liblua.a: $(LUA_TARBALL)
 	$(MAKE) -C $(LUA_SRC) a CC=$(MUSL_CC) MYCFLAGS=-DLUA_USE_POSIX
 
 FORCE:
+# template-init: end static
 
 # Source tarball with the submodules and a VERSION file (GitHub's own
 # tarballs have neither)
@@ -253,29 +301,45 @@ dist:
 	echo $(VERSION) >$(BUILD)/dist/$(NAME)-$(VERSION)/VERSION
 	$(TAR) -cf - -C $(BUILD)/dist $(NAME)-$(VERSION) | gzip -9n >$(NAME)-$(VERSION).tar.gz
 
-# The completions on their own, for the static binary and the AppImage
+# template-init: begin completions
+# The completions on their own, released beside the binaries
+.PHONY: completions
 completions:
 	$(TAR) --transform 's|^completions|$(NAME)-completions|' -cf - completions | gzip -9n >$(NAME)-completions.tar.gz
+# template-init: end completions
 
+# template-init: begin releases
 # Grouped commit messages since the first release, like each release has
+.PHONY: changelog
 changelog:
 	@mkdir -p $(BUILD)
 	scripts/changelog.sh >$(BUILD)/CHANGELOG.md
 	mv $(BUILD)/CHANGELOG.md CHANGELOG.md
+# template-init: end releases
 
 version:
 	@echo $(or $(VERSION),unknown)
 
+# template-init: begin hooks
 # Run the tests before every `git push`
+.PHONY: hooks
 hooks:
 	git config core.hooksPath scripts/hooks
+# template-init: end hooks
 
 # What the build makes. The downloaded tools and Lua are kept.
 clean:
 	rm -rf $(NAME) $(NAME).1 CHANGELOG.md $(BUILD)/.flags $(BUILD)/src $(BUILD)/test $(BUILD)/AppDir $(BUILD)/dist $(BUILD)/static $(BUILD)/$(NAME).*
 
-# Back to a fresh clone: also the tools, Lua, AppImages, static binaries,
-# tarballs and PDFs
+# Back to a fresh clone: also the downloads and every package
 distclean: clean
-	rm -rf $(BUILD) $(NAME)-*.AppImage $(NAME)-*-static $(NAME)-*.tar.gz
+	rm -rf $(BUILD) $(NAME)-*.tar.gz
+# template-init: begin appimage
+	rm -f $(NAME)-*.AppImage
+# template-init: end appimage
+# template-init: begin static
+	rm -f $(NAME)-*-static
+# template-init: end static
+# template-init: begin docs
 	find docs -name '*.pdf' -delete
+# template-init: end docs

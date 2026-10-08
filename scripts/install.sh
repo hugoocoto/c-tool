@@ -147,11 +147,11 @@ installed() {
 }
 
 # The latest release's tag: releases/latest redirects to releases/tag/<tag>,
-# or to releases if there are none
+# or to releases if there are none. Nothing if it can't tell: the download
+# says why, if it fails too.
 latest() {
         local tag
-        tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$GITHUB/$REPO/releases/latest") ||
-                die "can't reach $GITHUB/$REPO"
+        tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$GITHUB/$REPO/releases/latest" 2>/dev/null) || return 0
         tag=${tag##*/}
         [ "$tag" = releases ] || [ "$tag" = latest ] || say "$tag"
 }
@@ -193,13 +193,21 @@ attest() {
 # Every file into the current dir, checked: 1 if one doesn't check out. It
 # runs in main's scope (url, bin, why, skip_attest).
 download() {
+        local f
         fetch "$url/SHA256SUMS" SHA256SUMS ||
                 die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
         if [ -z "$skip_attest" ] && [ -z "$why" ]; then attest || return 1; fi
-        fetch "$url/$bin" "$bin" || die "release $tag has no $bin"
-        fetch "$url/$NAME-completions.tar.gz" "$NAME-completions.tar.gz" || die "release $tag has no completions"
-        fetch "$url/$NAME.1" "$NAME.1" || die "release $tag has no man page"
-        verify "$bin" && verify "$NAME-completions.tar.gz" && verify "$NAME.1"
+        for f in "$bin" $extras; do
+                fetch "$url/$f" "$f" || die "release $tag has no $f, though its SHA256SUMS has it"
+                verify "$f" || return 1
+        done
+}
+
+# Whether the release (its SHA256SUMS, in the current dir) has FILE. Every
+# file but the binary is optional: a project may not make a man page,
+# completions, an AppImage or a static binary.
+has() {
+        awk -v f="$1" '$2 == f || $2 == "*" f { found = 1 } END { exit !found }' SHA256SUMS
 }
 
 # Install SRC as DEST, but beside it, until commit puts everything in place
@@ -275,7 +283,8 @@ remove_desktop() {
 # bash runs nothing instead of half of it
 main() {
         local tag='' kind='' yes='' strict='' skip_attest='' action=install
-        local arch url bin version found arg prefix current newest why checks try
+        local arch url bin version found arg prefix current newest why checks try extras
+        local -a kinds
 
         for arg; do
                 case $arg in
@@ -335,10 +344,34 @@ main() {
         '') die "the version can't be empty" ;;
         esac
 
-        # The kind installed now, else the static binary: it runs anywhere
-        [ -n "$kind" ] || kind=${current#* }
-        [ "$kind" = appimage ] || kind=static
-        choose kind "Static binary or AppImage" "$kind" static appimage
+        # What the release has, from its SHA256SUMS
+        tmp=$(mktemp -d)
+        trap cleanup EXIT
+        cd "$tmp"
+        url=$GITHUB/$REPO/releases/download/$tag
+        fetch "$url/SHA256SUMS" SHA256SUMS ||
+                die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
+        kinds=()
+        if has "$NAME-$arch-static"; then kinds+=(static); fi
+        if has "$NAME-$arch.AppImage"; then kinds+=(appimage); fi
+        [ ${#kinds[@]} != 0 ] || die "release $tag has nothing for $arch"
+        extras=''
+        if has "$NAME.1"; then extras+=" $NAME.1"; fi
+        if has "$NAME-completions.tar.gz"; then extras+=" $NAME-completions.tar.gz"; fi
+
+        # The kind asked for, else the one installed now, else the static
+        # binary (it runs anywhere), of the ones the release has
+        if [ -n "$kind" ]; then
+                [[ " ${kinds[*]} " == *" $kind "* ]] || die "release $tag has no $kind for $arch"
+        else
+                kind=${current#* }
+                [[ " ${kinds[*]} " == *" $kind "* ]] || kind=${kinds[0]}
+        fi
+        if [ ${#kinds[@]} = 1 ]; then
+                say "Kind: $kind, the only one release $tag has"
+        else
+                choose kind "Static binary or AppImage" "$kind" "${kinds[@]}"
+        fi
         if [ "$kind" = appimage ]; then
                 bin=$NAME-$arch.AppImage
         else
@@ -358,12 +391,7 @@ main() {
         say "Checks: $checks"
         confirm "Install $NAME $tag ($kind, $arch) to $PREFIX?" || die "cancelled"
 
-        tmp=$(mktemp -d)
-        trap cleanup EXIT
-        cd "$tmp"
-
         say "Downloading $NAME $tag ($arch)"
-        url=$GITHUB/$REPO/releases/download/$tag
         # CI replaces nightly's files one by one, so for a moment they may
         # not match its checksums yet: then it tries again
         for try in 1 2 3; do
@@ -372,15 +400,16 @@ main() {
                 say "nightly may be being updated right now, trying again in 20 seconds"
                 sleep 20
         done
-        tar -xzf "$NAME-completions.tar.gz"
-
         # Everything goes beside its place first, so a failure (a full disk,
         # a dir it can't write to) leaves the old install as it was
         stage 755 "$bin" "$BINDIR/$NAME"
-        stage 644 "$NAME-completions/$NAME.bash" "$BASHDIR/$NAME"
-        stage 644 "$NAME-completions/_$NAME" "$ZSHDIR/_$NAME"
-        stage 644 "$NAME-completions/$NAME.fish" "$FISHDIR/$NAME.fish"
-        stage 644 "$NAME.1" "$MANDIR/$NAME.1"
+        if [ -f "$NAME-completions.tar.gz" ]; then
+                tar -xzf "$NAME-completions.tar.gz"
+                stage 644 "$NAME-completions/$NAME.bash" "$BASHDIR/$NAME"
+                stage 644 "$NAME-completions/_$NAME" "$ZSHDIR/_$NAME"
+                stage 644 "$NAME-completions/$NAME.fish" "$FISHDIR/$NAME.fish"
+        fi
+        if [ -f "$NAME.1" ]; then stage 644 "$NAME.1" "$MANDIR/$NAME.1"; fi
         commit
         if [ "$kind" = appimage ]; then
                 integrate_desktop "$bin"
@@ -405,7 +434,7 @@ main() {
                 warn "\`$NAME\` runs $found instead, it comes first in your PATH"
         fi
         case ${SHELL:-} in
-        */zsh) say "For the zsh completions, add to ~/.zshrc before compinit: fpath=($ZSHDIR \$fpath)" ;;
+        */zsh) [ ! -f "$NAME-completions.tar.gz" ] || say "For the zsh completions, add to ~/.zshrc before compinit: fpath=($ZSHDIR \$fpath)" ;;
         esac
 }
 

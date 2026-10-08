@@ -3,6 +3,6 @@
 - [ ] `make test` and `make test SANITIZE=thread` pass, built with `WERROR=1`
 - [ ] `make analyze` passes
 - [ ] New behavior has a test in `test/`
-- [ ] Docs are updated if users can see the change (`--help`, man page,
-      completions, README), see CONTRIBUTING.md
+- [ ] Docs are updated if users can see the change, see Documentation in
+      CONTRIBUTING.md
 - [ ] `make check-format` passes

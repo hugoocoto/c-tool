@@ -4,8 +4,8 @@ Thanks for helping! Bug reports, ideas, docs and code are all welcome.
 
 ## Reporting bugs
 
-[Open an issue](../../issues/new/choose) using the bug report form. The more
-of this it has, the faster it gets fixed:
+[Open an issue](../../issues/new/choose). The more of this it has, the
+faster it gets fixed:
 
 - what you ran (the command, and the config if it matters),
 - what happened (the full output) and what you expected,
@@ -14,8 +14,10 @@ of this it has, the faster it gets fixed:
 
 Search the open issues first: someone may have reported it already.
 
+<!-- template-init: begin community -->
 A security problem goes privately instead, not in an issue: see
 [SECURITY.md](.github/SECURITY.md).
+<!-- template-init: end community -->
 
 ## Suggesting features
 
@@ -42,13 +44,17 @@ Editors that use clangd get the right flags from `src/.clangd` and
 ### Project layout
 
 ```
-src/              the program, every .c is compiled to build/src/*.o
-src/thirdparty/   git submodules: flag.h (flags), cum.h (macros), conf.h (Lua config)
-test/             one self-contained test program per .c
-docs/             the man page (__NAME__.1) and Typst documents
-completions/      bash, zsh and fish completions
-scripts/          install.sh, test.sh, release.sh, hooks/
-assets/           the AppImage icon
+src/                 the program, every .c is compiled to build/src/*.o
+src/thirdparty/      git submodules: flag.h (flags), cum.h (macros), conf.h (Lua config)
+test/                one self-contained test program per .c
+scripts/test.sh      runs the tests (make test)
+docs/__NAME__.1      the man page
+docs/*.typ           Typst documents, to PDF with make docs
+completions/         bash, zsh and fish completions
+assets/              the AppImage icon
+scripts/install.sh   the install script, attached to every release
+scripts/release.sh   tags a release (scripts/changelog.sh writes its notes)
+scripts/hooks/       git hooks (make hooks)
 ```
 
 ## Making a change
@@ -107,11 +113,10 @@ Writing tests:
 
 A change users can see updates, in the same pull request:
 
-- a flag: `--help` (in `src/main.c`), the man page (`docs/__NAME__.1`), the
-  three files in `completions/` and Usage in the README,
-- the config: the man page, `config.lua` and Configuration in the README.
-
-Check the man page with `man docs/__NAME__.1`.
+- `--help` (in `src/main.c`) and Usage in the README, for a flag,
+- `config.lua` and Configuration in the README, for the config,
+- the man page, `docs/__NAME__.1` (check it with `man docs/__NAME__.1`),
+- the three files in `completions/`, for a flag.
 
 ## Commit messages
 
@@ -119,6 +124,7 @@ One change per commit. The first line says what it does, in under 72
 characters (`Add --quiet flag`, `Fix crash on empty config`). If it isn't
 obvious, the body says why.
 
+<!-- template-init: begin releases -->
 The first lines are the changelog and the release notes
 (`scripts/changelog.sh`, `make changelog` to see it), grouped by their first
 word:
@@ -131,18 +137,24 @@ word:
 | anything else (Change, Update, Make...)      | Changed  |
 
 So write them for users: `Fix crash on empty config`, not `fix bug`.
+<!-- template-init: end releases -->
 
 ## Third-party code
 
-`src/thirdparty/` holds git submodules. Dependabot opens a pull request every
-week when they have new commits, and CI tests it. Fix bugs in them upstream;
-to update one by hand:
+`src/thirdparty/` holds git submodules. Fix bugs in them upstream; to update
+one by hand:
 
 ```sh
 git -C src/thirdparty/flag pull origin main
 git add src/thirdparty/flag
 ```
 
+<!-- template-init: begin dependabot -->
+Dependabot also opens a pull request every week when they have new commits,
+and CI tests it.
+<!-- template-init: end dependabot -->
+
+<!-- template-init: begin releases -->
 ## Releases
 
 Maintainers release from main with `scripts/release.sh`, which asks for the
@@ -152,6 +164,7 @@ minor, the rest a patch; before 1.0.0, removing is minor too), and pushes its
 tag. CI then builds and publishes the release. Every push to main updates the
 nightly release.
 
+<!-- template-init: end releases -->
 ## License
 
 By contributing you agree that your work is licensed under the GPL-3.0 or

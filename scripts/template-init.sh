@@ -6,15 +6,18 @@
 #
 # It asks for the name, a one-line description, the GitHub repo and the
 # author, suggesting what it finds: NAME or the git repo's name, DESCRIPTION
-# or the GitHub repo's description, origin, and git config. Every placeholder
-# in every file is then replaced, so the code, the docs, the man page, the
-# completions, install.sh, the issue forms and the README all name the new
-# project. The program's name is __NAME__ in the template (and __NAME_UPPER__,
-# __NAME_ID__ where it can't have a -, \_\_NAME\_\_ in Markdown text), a
-# token nothing else has, so only it gets replaced. The rest are the
-# template's own values, unique enough as they are. Then it registers the submodules, enables the git hooks and
-# deletes itself. Review and commit. Without a terminal it takes the
-# suggestions without asking.
+# or the GitHub repo's description, origin, and git config. Then it asks which
+# optional parts to keep (see parts below), and removes the others.
+#
+# Every placeholder in every file is then replaced, so everything names the
+# new project. The program's name is __NAME__ in the template (and
+# __NAME_UPPER__, __NAME_ID__ where it can't have a -, \_\_NAME\_\_ in Markdown
+# text), a token nothing else has, so only it gets replaced. The rest are the
+# template's own values, unique enough as they are. Then it registers the
+# submodules, enables the git hooks and deletes itself. Review and commit.
+#
+# Without a terminal it takes the suggestions without asking: every part is
+# kept, but the ones in $TEMPLATE_WITHOUT (like "docs appimage").
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -62,7 +65,7 @@ remote=$(git remote get-url origin 2>/dev/null || true)
 # The binary is built at the top of the repo, ignored there by .gitignore,
 # removed by `make clean` (rm -rf) and a make target: it can't be the name of
 # anything else at the top, nor of another target
-reserved=" build $(sed -n 's/^\.PHONY: *//p' Makefile) "
+reserved=" build $(sed -n 's/^\.PHONY: *//p' Makefile | tr '\n' ' ') "
 check_name() {
         if ! [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
                 echo "'$1' can't be a program name: letters, digits, - and _"
@@ -107,6 +110,76 @@ fi
 ask slug "GitHub repo (owner/repo)" "$slug" check_slug
 ask author "Author" "$author" check_author
 ask email "Author's email" "$email" check_email
+
+# The optional parts. A part is its files, the lines between its
+# "template-init: begin PART" and "template-init: end PART" comments in any
+# file, and the lines of README.md and CONTRIBUTING.md (table rows, code)
+# that have its text, where a comment can't go.
+parts=(docs man completions appimage static releases install hooks dependabot community)
+declare -A part_about=(
+        [docs]="the Typst manual: docs/*.typ, as PDFs in every release"
+        [man]="the man page"
+        [completions]="the bash, zsh and fish completions"
+        [appimage]="the AppImage, built and released for x86_64 and aarch64"
+        [static]="the static binary (musl), built and released for x86_64 and aarch64"
+        [releases]="GitHub releases: nightly and vX.Y.Z from CI, scripts/release.sh and the changelog"
+        [install]="the install script (curl ... | bash), attached to every release"
+        [hooks]="the git pre-push hook that runs the tests"
+        [dependabot]="Dependabot: weekly pull requests updating the actions and the submodules"
+        [community]="the issue forms, the pull request template and SECURITY.md"
+)
+declare -A part_files=(
+        [docs]="docs/manual.typ"
+        [man]="docs/$old_name.1"
+        [completions]="completions"
+        [appimage]="assets"
+        [releases]="scripts/release.sh scripts/changelog.sh"
+        [install]="scripts/install.sh"
+        [hooks]="scripts/hooks"
+        [dependabot]=".github/dependabot.yml"
+        [community]=".github/ISSUE_TEMPLATE .github/pull_request_template.md .github/SECURITY.md"
+)
+# FILE<tab>TEXT: the line of FILE with TEXT in it
+declare -A part_lines=(
+        [docs]=$'README.md\t| `make docs`\nREADME.md\t| `*.pdf`\nCONTRIBUTING.md\tdocs/*.typ'
+        [man]=$'README.md\t| `make man`\nREADME.md\t| `__NAME__.1`\nCONTRIBUTING.md\tdocs/__NAME__.1      the man page\nCONTRIBUTING.md\t- the man page,'
+        [completions]=$'README.md\t| `make completions`\nREADME.md\t| `__NAME__-completions.tar.gz`\nCONTRIBUTING.md\tcompletions/         bash\nCONTRIBUTING.md\t- the three files in `completions/`'
+        [appimage]=$'README.md\t| `make appimage`\nREADME.md\t| `__NAME__-<arch>.AppImage`\nREADME.md\tbash -s -- --appimage\nCONTRIBUTING.md\tassets/              the AppImage icon'
+        [static]=$'README.md\t| `make static`\nREADME.md\t| `__NAME__-<arch>-static`'
+        [releases]=$'README.md\t| `make changelog`\nREADME.md\timg.shields.io/github/v/release\nCONTRIBUTING.md\tscripts/release.sh   tags'
+        [install]=$'README.md\t| `install.sh`\nCONTRIBUTING.md\tscripts/install.sh   the install'
+        [hooks]=$'CONTRIBUTING.md\tmake hooks   # run\nCONTRIBUTING.md\tscripts/hooks/       git hooks'
+)
+
+# Which to keep: every one, but those in $TEMPLATE_WITHOUT
+declare -A keep
+for part in "${parts[@]}"; do keep[$part]=1; done
+without=${TEMPLATE_WITHOUT:-}
+for part in ${without//,/ }; do
+        [ -n "${part_about[$part]:-}" ] || die "TEMPLATE_WITHOUT: no part called '$part' (${parts[*]})"
+        keep[$part]=''
+done
+[ -z "$interactive" ] || echo "Which parts to keep? Enter keeps it, n removes it"
+for part in "${parts[@]}"; do
+        # The install script installs a release's binary
+        if [ "$part" = install ] && { [ -z "${keep[releases]}" ] || [ -z "${keep[appimage]}${keep[static]}" ]; }; then
+                keep[install]=''
+                [ -z "$interactive" ] || echo "  install: removed too, it needs releases and a binary to install"
+                continue
+        fi
+        [ -n "$interactive" ] || continue
+        if [ -n "${keep[$part]}" ]; then default=Y/n; else default=y/N; fi
+        read -rp "  $part, ${part_about[$part]}? [$default] " ok </dev/tty || die "cancelled"
+        case $ok in
+        [yY]*) keep[$part]=1 ;;
+        [nN]*) keep[$part]='' ;;
+        esac
+done
+kept='' removed=''
+for part in "${parts[@]}"; do
+        if [ -n "${keep[$part]}" ]; then kept+=" $part"; else removed+=" $part"; fi
+done
+
 desc=${desc%.}
 desc=${desc^}
 # For the man page and comments: "foo - do things", unless it starts with
@@ -119,6 +192,8 @@ echo "name:        $name"
 echo "description: $desc"
 echo "repo:        $slug"
 echo "author:      $author <$email>"
+echo "keeps:      ${kept:- nothing optional}"
+echo "removes:    ${removed:- nothing}"
 if [ -n "$interactive" ]; then
         read -rp "Initialize the project with these? [Y/n] " ok </dev/tty
         [ "${ok:-y}" = y ] || [ "${ok:-y}" = Y ] || die "cancelled"
@@ -139,6 +214,40 @@ git submodule update --init
 
 # The README part about using the template
 sed -i '/<!-- template-init: remove from here -->/,/<!-- template-init: to here -->/d' README.md
+
+# The parts, unless done already (no marker is left then). Lines first: a
+# block removed after can have some of them.
+mapfile -t marked < <(grep -rIlE --exclude-dir=.git --exclude-dir=thirdparty --exclude-dir=build \
+        --exclude="$(basename "$0")" 'template-init: (begin|end) [a-z]+' . || true)
+if [ ${#marked[@]} != 0 ]; then
+        for part in $removed; do
+                while IFS=$'\t' read -r file text; do
+                        [ -n "$file" ] || continue
+                        if grep -qF -- "$text" "$file"; then
+                                grep -vF -- "$text" "$file" >"$file.new" && mv "$file.new" "$file"
+                        else
+                                echo "warning: $part: no line with '$text' in $file to remove" >&2
+                        fi
+                done <<<"${part_lines[$part]:-}"
+        done
+        for part in "${parts[@]}"; do
+                if [ -n "${keep[$part]}" ]; then
+                        sed -i -E "/template-init: (begin|end) $part\b/d" "${marked[@]}"
+                else
+                        sed -i "/template-init: begin $part\b/,/template-init: end $part\b/d" "${marked[@]}"
+                fi
+        done
+        # Their files last: some of them have markers, which the loop edits
+        for part in $removed; do
+                # shellcheck disable=SC2086 # a list of paths
+                rm -rf ${part_files[$part]:-}
+        done
+        # What a removed block leaves: two blank lines where it was
+        for f in "${marked[@]}"; do
+                [ ! -f "$f" ] || sed -i '/^$/N;/^\n$/D' "$f"
+        done
+        rmdir docs 2>/dev/null || true
+fi
 
 # Every text file with a placeholder, except the ones that aren't ours
 mapfile -t files < <(grep -rIl --exclude-dir=.git --exclude-dir=thirdparty --exclude-dir=build \
@@ -168,19 +277,23 @@ move() {
                 return 1
         fi
 }
-for f in docs/$old_name.1 completions/$old_name.bash completions/_$old_name completions/$old_name.fish; do
+renames=()
+[ -z "${keep[man]}" ] || renames+=("docs/$old_name.1")
+[ -z "${keep[completions]}" ] || renames+=("completions/$old_name.bash" "completions/_$old_name" "completions/$old_name.fish")
+for f in "${renames[@]}"; do
         move "$f" "${f//$old_name/$name}"
 done
 rm -f "$old_name"
 
-git config core.hooksPath scripts/hooks
+[ -z "${keep[hooks]}" ] || git config core.hooksPath scripts/hooks
 trap - ERR
 
 # What's left of the template is worth a look: a token misspelled, or one of
 # its values written differently
-left=$(grep -rIn --exclude-dir=.git --exclude-dir=thirdparty --exclude-dir=build \
+left=$(grep -rInE --exclude-dir=.git --exclude-dir=thirdparty --exclude-dir=build \
         --exclude=LICENSE --exclude=.clang-format --exclude="$(basename "$0")" \
-        -e "__NAME" -e 'NAME\\_\\_' -e "$old_slug" -e "$old_author" -e "$old_email" -e "$old_desc" . || true)
+        -e "__NAME" -e 'NAME\\_\\_' -e "$old_slug" -e "$old_author" -e "$old_email" -e "$old_desc" \
+        -e 'template-init: (begin|end)' . || true)
 rm -- "$0"
 
 echo
@@ -200,5 +313,5 @@ if [ -n "$interactive" ]; then
         fi
 fi
 echo "Review the changes with 'git status' and 'git diff', and commit. What's left"
-echo "is your program: src/, test/, config.lua, the man page, the completions and"
-echo "Usage and Configuration in README.md, which say what to keep in sync."
+echo "is your program: src/, test/, config.lua and what describes it, which"
+echo "Documentation in CONTRIBUTING.md lists."

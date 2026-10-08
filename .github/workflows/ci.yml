@@ -1,13 +1,13 @@
 name: CI
 
-# Every push and PR runs the tests. A push to main also refreshes the
-# "nightly" release, and a v* tag (see scripts/release.sh) makes a release of
-# its own. Both have, for x86_64 and aarch64, the AppImage and a static (musl)
-# binary, plus a source tarball, the shell completions, the man page, the docs
-# PDFs, the changelog and their checksums, and are only published if every test passes.
-# Their files are attested (signed as built by this workflow), which is what
-# scripts/install.sh checks, and it is run on them once they're published.
-# Their notes are their part of the changelog (scripts/changelog.sh).
+# Every push and PR runs the tests, and builds and checks what `make
+# release-arch` (on x86_64 and aarch64) and `make release-common` make.
+# template-init: begin releases
+# A push to main also refreshes the "nightly" release with them, and a v* tag
+# (see scripts/release.sh) makes a release of its own, only if every job
+# passes. Their files are attested (signed as built by this workflow), and
+# their notes are their part of the changelog (scripts/changelog.sh).
+# template-init: end releases
 
 on:
   push:
@@ -65,9 +65,10 @@ jobs:
       - name: Check the format
         run: make check-format
 
-      # A glob, not names: the init script deletes itself
+      # Whatever scripts there are: the init script deletes itself, and the
+      # others depend on the parts it kept
       - name: Check the scripts
-        run: shellcheck scripts/*.sh scripts/hooks/*
+        run: find scripts -type f -exec shellcheck {} +
 
   # The paths no test runs: clang's static analyzer (see `make analyze`)
   analyze:
@@ -83,6 +84,7 @@ jobs:
       - name: Analyze
         run: make analyze
 
+  # template-init: begin docs
   docs:
     runs-on: ubuntu-latest
     steps:
@@ -102,20 +104,22 @@ jobs:
           name: docs
           path: docs/**/*.pdf
           if-no-files-found: ignore
+  # template-init: end docs
 
   package:
-    # The oldest runners: the AppImage needs a glibc at least as new as the
-    # one it was built with, so this makes it run on more systems. The static
-    # binary has no such limit.
+    # template-init: begin appimage
+    # The oldest runners: an AppImage needs a glibc at least as new as the one
+    # it was built with, so this makes it run on more systems
+    # template-init: end appimage
     strategy:
       matrix:
         include:
           - runner: ubuntu-22.04
             arch: x86_64
-            make: appimage static dist completions man # the arch-independent ones only once
+            make: release-arch release-common
           - runner: ubuntu-22.04-arm
             arch: aarch64
-            make: appimage static
+            make: release-arch
     name: package (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     steps:
@@ -125,7 +129,11 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y $DEPS musl-tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y $DEPS
+          # template-init: begin static
+          sudo apt-get install -y musl-tools # musl-gcc, for the static binary
+          # template-init: end static
 
       # The pinned tools and Lua (see the Makefile), checked before every use
       # whether they come from here or from the download
@@ -145,20 +153,26 @@ jobs:
         run: |
           shopt -s nullglob
           version=$(make -s version)
-          for bin in ./*-static ./*.AppImage; do
-            echo "$bin --version: $("$bin" --version)"
-            [[ $("$bin" --version) == *" $version" ]]
-          done
+          # template-init: begin static
           for bin in ./*-static; do
+            [[ $("$bin" --version) == *" $version" ]]
             file -b "$bin" | grep -E 'statically linked|static-pie linked'
             "$bin" --config config.lua
           done
+          # template-init: end static
+          # template-init: begin appimage
+          for bin in ./*.AppImage; do
+            [[ $("$bin" --version) == *" $version" ]]
+            "$bin" --config config.lua
+          done
+          # template-init: end appimage
+          # template-init: begin man
           for man in ./*.1; do
             grep -q "$version" "$man"
           done
+          # template-init: end man
           # The source tarball builds on its own, and knows its version
-          for src in ./*.tar.gz; do
-            [[ $src != *-completions.tar.gz ]] || continue
+          for src in ./*-"$version".tar.gz; do
             tar -xzf "$src" -C "$RUNNER_TEMP"
             dir=$RUNNER_TEMP/$(basename "$src" .tar.gz)
             make -C "$dir"
@@ -167,19 +181,34 @@ jobs:
             [[ $("$dir/$name" --version) == "$name $version" ]]
           done
 
+      # template-init: begin releases
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-${{ matrix.arch }}
           path: |
-            *.AppImage
-            *-static
             *.tar.gz
+            # template-init: begin appimage
+            *.AppImage
+            # template-init: end appimage
+            # template-init: begin static
+            *-static
+            # template-init: end static
+            # template-init: begin man
             *.1
+            # template-init: end man
+          if-no-files-found: ignore
 
   release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [test, format, analyze, docs, package]
-    # Never stopped halfway: nightly is deleted and made again
+    needs:
+      - test
+      - format
+      - analyze
+      # template-init: begin docs
+      - docs
+      # template-init: end docs
+      - package
+    # One at a time: nightly's files are replaced in place
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
@@ -218,13 +247,15 @@ jobs:
           # PDFs from docs/ subfolders keep their folders: flatten them
           find release -mindepth 2 -type f -exec mv -t release {} +
           find release -mindepth 1 -type d -delete
+          # template-init: begin install
           # The install script too, so it's attested like the rest: what the
           # README runs is releases/latest/download/install.sh
           cp scripts/install.sh release/
+          # template-init: end install
           cd release && sha256sum * >SHA256SUMS
 
-      # Proof that these files were built here, from this commit: install.sh
-      # checks SHA256SUMS with `gh attestation verify`, and SHA256SUMS the rest
+      # Proof that these files were built here, from this commit: `gh
+      # attestation verify` checks SHA256SUMS, and SHA256SUMS the rest
       - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-path: release/*
@@ -240,8 +271,8 @@ jobs:
           fi
           # The tag moves here, and the release's files are replaced in place:
           # deleting it and making it again would leave a moment without it.
-          # SHA256SUMS goes last, so an install in between finds files newer
-          # than their checksums, and install.sh tries again.
+          # SHA256SUMS goes last, so a download in between finds files newer
+          # than their checksums, and fails instead of using them.
           version=$(git describe --tags --match 'v*' --always)
           git tag -f nightly "$GITHUB_SHA"
           git push -f origin nightly
@@ -261,6 +292,9 @@ jobs:
           # Its date stays the first one's: the notes say when this was built
           gh release edit nightly --repo "$GITHUB_REPOSITORY" --title "Nightly $version" --notes-file ../notes.md
 
+  # template-init: end releases
+
+  # template-init: begin install
   install:
     # scripts/install.sh, on the release just published, as users run it
     needs: release
@@ -273,7 +307,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install, switch to the AppImage and back, uninstall
+      - name: Install, reinstall, uninstall
         env:
           GH_TOKEN: ${{ github.token }} # gh attestation verify needs a login
           REPO: ${{ github.repository }}
@@ -288,16 +322,24 @@ jobs:
           # --strict: no attestation fails
           bash "$install" --yes --strict "$tag"
           [[ $(prefix/bin/$name --version) == "$name $version" ]]
+          # template-init: begin man
           test -f "prefix/share/man/man1/$name.1"
+          # template-init: end man
+          # template-init: begin completions
           test -f "prefix/share/bash-completion/completions/$name"
+          # template-init: end completions
+          # template-init: begin appimage
           bash "$install" --yes --strict --appimage "$tag"
           [[ $(prefix/bin/$name --version) == "$name $version" ]]
           test -f "prefix/share/applications/$name.desktop"
+          # template-init: begin static
           # The AppImage is installed, so it's what's suggested now
           bash "$install" --yes --strict "$tag"
           test -f "prefix/share/applications/$name.desktop"
           bash "$install" --yes --strict --static "$tag"
           test ! -e "prefix/share/applications/$name.desktop"
+          # template-init: end static
+          # template-init: end appimage
           bash "$install" --yes uninstall
           [ -z "$(find prefix -type f)" ]
 
@@ -322,3 +364,4 @@ jobs:
           test -x "/usr/local/bin/$name"
           sudo --preserve-env=REPO bash scripts/install.sh --yes uninstall
           test ! -e "/usr/local/bin/$name"
+  # template-init: end install
