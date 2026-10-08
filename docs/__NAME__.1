@@ -1,14 +1,14 @@
-.TH TEMPLATE 1 "@DATE@" "template @VERSION@" "User Commands"
+.TH __NAME_UPPER__ 1 "@DATE@" "__NAME__ @VERSION@" "User Commands"
 .SH NAME
-template \- greet everyone listed in a Lua config
+__NAME__ \- greet everyone listed in a Lua config
 .SH SYNOPSIS
-.B template
+.B __NAME__
 .RB [ \-h ]
 .RB [ \-v ]
 .RB [ \-c
 .IR file ]
 .SH DESCRIPTION
-.B template
+.B __NAME__
 prints a greeting for every name in its config, as many times as the config
 says.
 .SH OPTIONS
@@ -27,8 +27,8 @@ instead of the default ones.
 The first of these that exists is the config. If none does, the defaults are
 used.
 .TP
-.I $XDG_CONFIG_HOME/template/config.lua
-.RI ( ~/.config/template/config.lua
+.I $XDG_CONFIG_HOME/__NAME__/config.lua
+.RI ( ~/.config/__NAME__/config.lua
 if XDG_CONFIG_HOME is not set)
 .TP
 .I ./config.lua

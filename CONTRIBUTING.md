@@ -1,4 +1,4 @@
-# Contributing to template
+# Contributing to \_\_NAME\_\_
 
 Thanks for helping! Bug reports, ideas, docs and code are all welcome.
 
@@ -9,7 +9,7 @@ of this it has, the faster it gets fixed:
 
 - what you ran (the command, and the config if it matters),
 - what happened (the full output) and what you expected,
-- the output of `template --version`, and how you installed it,
+- the output of `__NAME__ --version`, and how you installed it,
 - your distro and architecture.
 
 Search the open issues first: someone may have reported it already.
@@ -26,8 +26,8 @@ You need a C compiler (gcc or clang), make and Lua 5.1 or LuaJIT with its
 headers: see [Building](README.md#building).
 
 ```sh
-git clone --recursive https://github.com/<you>/template
-cd template
+git clone --recursive https://github.com/<you>/__NAME__
+cd __NAME__
 make hooks   # run the tests before every push
 make debug   # build with the sanitizers while working
 make test
@@ -42,7 +42,7 @@ Editors that use clangd get the right flags from `src/.clangd` and
 src/              the program, every .c is compiled to build/src/*.o
 src/thirdparty/   git submodules: flag.h (flags), cum.h (macros), conf.h (Lua config)
 test/             one self-contained test program per .c
-docs/             the man page (template.1) and Typst documents
+docs/             the man page (__NAME__.1) and Typst documents
 completions/      bash, zsh and fish completions
 scripts/          install.sh, test.sh, release.sh, hooks/
 assets/           the AppImage icon
@@ -101,11 +101,11 @@ Writing tests:
 
 A change users can see updates, in the same pull request:
 
-- a flag: `--help` (in `src/main.c`), the man page (`docs/template.1`), the
+- a flag: `--help` (in `src/main.c`), the man page (`docs/__NAME__.1`), the
   three files in `completions/` and Usage in the README,
 - the config: the man page, `config.lua` and Configuration in the README.
 
-Check the man page with `man docs/template.1`.
+Check the man page with `man docs/__NAME__.1`.
 
 ## Commit messages
 

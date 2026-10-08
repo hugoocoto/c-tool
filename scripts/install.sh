@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install template from its GitHub releases, nothing to build:
+# Install __NAME__ from its GitHub releases, nothing to build:
 #
 #   curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
 #
@@ -13,7 +13,7 @@
 # arguments, which go after `bash -s --`.
 set -euo pipefail
 
-NAME=template
+NAME=__NAME__
 REPO=${REPO:-hugoocoto/c-tool}
 GITHUB=${GITHUB:-https://github.com}
 

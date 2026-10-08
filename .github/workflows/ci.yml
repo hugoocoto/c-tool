@@ -64,8 +64,9 @@ jobs:
       - name: Check the format
         run: make check-format
 
-      - name: Check the scripts users run
-        run: shellcheck scripts/install.sh scripts/release.sh scripts/template-init.sh
+      # A glob, not names: the init script deletes itself
+      - name: Check the scripts
+        run: shellcheck scripts/*.sh scripts/hooks/*
 
   docs:
     runs-on: ubuntu-latest

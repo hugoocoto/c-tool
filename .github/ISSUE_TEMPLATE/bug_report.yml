@@ -22,7 +22,7 @@ body:
   - type: input
     attributes:
       label: Version
-      description: The output of `template --version`.
+      description: The output of `__NAME__ --version`.
     validations:
       required: true
   - type: dropdown

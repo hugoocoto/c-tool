@@ -1,4 +1,4 @@
-// template - greet everyone listed in a Lua config
+// __NAME__ - greet everyone listed in a Lua config
 // Copyright (C) 2026 Hugo Coto Florez
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -14,7 +14,7 @@
 
 // Both come from the Makefile: NAME from the project, VERSION from git
 #ifndef NAME
-#define NAME "template"
+#define NAME "__NAME__"
 #endif
 #ifndef VERSION
 #define VERSION "unknown"

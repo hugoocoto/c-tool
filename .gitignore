@@ -1,5 +1,5 @@
 /build/
-/template
+/__NAME__
 /*.AppImage
 /*-static
 /*.tar.gz

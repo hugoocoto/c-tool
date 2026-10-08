@@ -8,7 +8,7 @@
 # TEST_LDLIBS, TEST_OUT (where the test binaries go) and TEST_BIN (the program,
 # for tests that run it). TEST_TIMEOUT (seconds, default 10) limits each test.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 [ -n "${TEST_CC:-}" ] || exec make --no-print-directory test
 
 mkdir -p "$TEST_OUT"

@@ -1,5 +1,5 @@
-#compdef template
-# zsh completion for template. `make install` puts it in
+#compdef __NAME__
+# zsh completion for __NAME__. `make install` puts it in
 # $PREFIX/share/zsh/site-functions, which must be in your $fpath.
 
 _arguments -s \

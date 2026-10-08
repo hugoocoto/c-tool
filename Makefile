@@ -1,6 +1,6 @@
 # Project name: the binary, ~/.config/$(NAME)/, the man page, the AppImage
 # and the release assets. The description is for the AppImage's menu entry.
-NAME := template
+NAME := __NAME__
 DESCRIPTION := Greet everyone listed in a Lua config
 
 # vX.Y.Z[-N-gHASH][-dirty] from git, else the VERSION file that `make dist`

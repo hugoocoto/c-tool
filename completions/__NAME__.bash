@@ -1,6 +1,6 @@
-# bash completion for template. `make install` puts it where bash-completion
+# bash completion for __NAME__. `make install` puts it where bash-completion
 # finds it, or source it from ~/.bashrc.
-_template_complete()
+___NAME_ID___complete()
 {
         local cur=${COMP_WORDS[COMP_CWORD]}
         local prev=${COMP_WORDS[COMP_CWORD - 1]}
@@ -14,4 +14,4 @@ _template_complete()
         esac
         mapfile -t COMPREPLY < <(compgen -W '--help -h --version -v --config -c' -- "$cur")
 }
-complete -F _template_complete template
+complete -F ___NAME_ID___complete __NAME__
