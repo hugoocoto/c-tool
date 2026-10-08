@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 env:
-  DEPS: liblua5.1-0-dev
+  DEPS: liblua5.4-dev
 
 jobs:
   test:
@@ -68,6 +68,20 @@ jobs:
       # A glob, not names: the init script deletes itself
       - name: Check the scripts
         run: shellcheck scripts/*.sh scripts/hooks/*
+
+  # The paths no test runs: clang's static analyzer (see `make analyze`)
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y $DEPS
+
+      - name: Analyze
+        run: make analyze
 
   docs:
     runs-on: ubuntu-latest
@@ -164,7 +178,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [test, format, docs, package]
+    needs: [test, format, analyze, docs, package]
     # Never stopped halfway: nightly is deleted and made again
     concurrency:
       group: release-${{ github.ref }}
@@ -204,6 +218,9 @@ jobs:
           # PDFs from docs/ subfolders keep their folders: flatten them
           find release -mindepth 2 -type f -exec mv -t release {} +
           find release -mindepth 1 -type d -delete
+          # The install script too, so it's attested like the rest: what the
+          # README runs is releases/latest/download/install.sh
+          cp scripts/install.sh release/
           cd release && sha256sum * >SHA256SUMS
 
       # Proof that these files were built here, from this commit: install.sh
@@ -283,6 +300,16 @@ jobs:
           test ! -e "prefix/share/applications/$name.desktop"
           bash "$install" --yes uninstall
           [ -z "$(find prefix -type f)" ]
+
+      - name: The release's install.sh is this one, and attested
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ "$GITHUB_REF_TYPE" = tag ] && tag=$GITHUB_REF_NAME || tag=nightly
+          curl -fsSL -o "$RUNNER_TEMP/install.sh" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/install.sh"
+          cmp "$RUNNER_TEMP/install.sh" scripts/install.sh
+          gh attestation verify "$RUNNER_TEMP/install.sh" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml"
 
       - name: Install as root, to /usr/local
         env:

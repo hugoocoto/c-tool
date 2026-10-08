@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "lua_compat.h" // before conf.h
+
 #define INCLUDE_CONF_IMPLEMENTATION
 #include "conf.h"
 #include "cum.h"
@@ -34,9 +36,11 @@ config_free(Config *config)
         Da_destroy(&config->names);
 }
 
-// Returns the first config file that exists: $XDG_CONFIG_HOME/NAME/config.lua
-// (default ~/.config/NAME/config.lua), then ./config.lua. NULL if none does.
-// The result must be freed.
+// Returns the user's config file, $XDG_CONFIG_HOME/NAME/config.lua (default
+// ~/.config/NAME/config.lua), or NULL if it doesn't exist. Never one in the
+// current dir: the config is Lua with its whole standard library, so running
+// the program inside a downloaded dir would run that dir's code. The result
+// must be freed.
 static char *
 find_config(void)
 {
@@ -52,7 +56,6 @@ find_config(void)
                 path[0] = '\0';
 
         if (*path && access(path, R_OK) == 0) return strdup(path);
-        if (access("config.lua", R_OK) == 0) return strdup("config.lua");
         return NULL;
 }
 

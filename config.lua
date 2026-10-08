@@ -1,6 +1,6 @@
--- Default config. Copy it to ~/.config/__NAME__/config.lua to change it:
--- that one is used first, and this one only when it doesn't exist.
--- It's plain Lua (5.1), so you can compute values, use os.getenv(), etc.
+-- An example config. Copy it to ~/.config/__NAME__/config.lua to use it, or
+-- pass it with --config: one in the current directory isn't read on its own.
+-- It's plain Lua (5.4), so you can compute values, use os.getenv(), etc.
 Config = {
     greeting = "Hello",
     times = 1,

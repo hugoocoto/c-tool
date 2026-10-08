@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install __NAME__ from its GitHub releases, nothing to build:
 #
-#   curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
+#   curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash
 #
 # It asks what to install and where, suggesting what it finds: the latest
 # release, ~/.local, the kind already installed. Then it installs the binary

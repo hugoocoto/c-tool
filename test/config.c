@@ -1,7 +1,9 @@
-// The default config.lua (tests run from the project root) has what main.c
+// The example config.lua (tests run from the project root) has what main.c
 // expects
 #include <stdio.h>
 #include <string.h>
+
+#include "lua_compat.h" // before conf.h
 
 #define INCLUDE_CONF_IMPLEMENTATION
 #include "conf.h"

@@ -1,5 +1,5 @@
 // Every .typ under docs/ is compiled by `make docs` and attached to each
-// release (CI builds them with the latest Typst).
+// release (CI builds them with the Typst version pinned in ci.yml).
 #set document(title: "__NAME__ manual")
 #set page(paper: "a4", numbering: "1")
 #set text(font: "New Computer Modern", size: 11pt)
@@ -20,10 +20,11 @@ __NAME__ [-h] [-v] [-c FILE]
 
 = Configuration
 
-The config is Lua. The first of these that exists is used:
-
-+ `$XDG_CONFIG_HOME/__NAME__/config.lua` (`~/.config/__NAME__/config.lua`)
-+ `./config.lua`
+The config is Lua: `$XDG_CONFIG_HOME/__NAME__/config.lua`
+(`~/.config/__NAME__/config.lua`), or the file given with `--config`.
+Without one, the defaults are used. A `config.lua` in the current directory
+is only read with `--config config.lua`: being Lua, a config can run
+commands.
 
 ```lua
 Config = {

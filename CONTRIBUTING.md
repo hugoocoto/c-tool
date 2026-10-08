@@ -14,6 +14,9 @@ of this it has, the faster it gets fixed:
 
 Search the open issues first: someone may have reported it already.
 
+A security problem goes privately instead, not in an issue: see
+[SECURITY.md](.github/SECURITY.md).
+
 ## Suggesting features
 
 Open an issue describing the problem you want to solve, not just the
@@ -22,8 +25,8 @@ in the issue before writing it: it saves everyone's time.
 
 ## Setting up
 
-You need a C compiler (gcc or clang), make and Lua 5.1 or LuaJIT with its
-headers: see [Building](README.md#building).
+You need a C compiler (gcc or clang), make and Lua 5.4 (or 5.1, or LuaJIT)
+with its headers: see [Building](README.md#building).
 
 ```sh
 git clone --recursive https://github.com/<you>/__NAME__

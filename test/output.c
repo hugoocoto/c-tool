@@ -47,6 +47,7 @@ static int
 check(void)
 {
         char out[4096];
+        char ran[PATH_MAX];
 
         // Every name, `times` times
         CHECK(write_file("all.lua", "Config = { greeting = 'Hi', times = 2, names = { 'a', 'b' } }") == 0);
@@ -61,6 +62,13 @@ check(void)
         // No config anywhere
         CHECK(run("", out, sizeof out) == 0);
         CHECK(strcmp(out, "Hello, world!\n") == 0);
+
+        // One in the current dir is never read on its own: it could run anything
+        CHECK(write_file("config.lua", "io.open('ran', 'w'):close() Config = { greeting = 'Pwned' }") == 0);
+        CHECK(run("", out, sizeof out) == 0);
+        CHECK(strcmp(out, "Hello, world!\n") == 0);
+        snprintf(ran, sizeof ran, "%s/ran", dir);
+        CHECK(access(ran, F_OK) != 0);
 
         // A broken config is an error, and nothing is greeted
         CHECK(write_file("broken.lua", "Config = {") == 0);

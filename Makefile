@@ -36,7 +36,10 @@ THIRDPARTY := src/thirdparty
 ifeq ($(wildcard $(THIRDPARTY)/conf/CONF_FLAGS),)
 $(error submodules missing, run: git submodule update --init)
 endif
-# Sets LUA (lua5.1 by default, `make LUA=luajit` also works), LUA_CFLAGS and LUA_LIBS
+# Lua 5.4 (pkg-config's lua5.4). `make LUA=lua5.1` and `make LUA=luajit` also
+# work: conf.h is written for 5.1, and src/lua_compat.h bridges it to 5.4.
+LUA ?= lua5.4
+# Sets LUA_CFLAGS and LUA_LIBS for $(LUA)
 include $(THIRDPARTY)/conf/CONF_FLAGS
 
 # Hardened by default: buffer overflow checks (_FORTIFY_SOURCE, which needs
@@ -71,7 +74,7 @@ $(shell mkdir -p $(BUILD))
 $(file > $(BUILD)/.flags,$(FLAGS))
 endif
 
-.PHONY: all debug test format check-format docs man install uninstall appimage static dist completions changelog version hooks clean distclean
+.PHONY: all debug test analyze format check-format docs man install uninstall appimage static dist completions changelog version hooks clean distclean
 
 all: $(BIN)
 
@@ -100,6 +103,20 @@ test:
 	@$(MAKE) --no-print-directory BUILD=$(TEST_BUILD) BIN=$(TEST_BUILD)/$(NAME) \
 		CFLAGS='-O1 -ggdb $(SAN_FLAGS)' LDFLAGS='$(SAN_FLAGS)' $(TEST_BUILD)/$(NAME)
 	@scripts/test.sh
+
+# clang's static analyzer: it follows every path through the code, also the
+# ones no test runs, looking for leaks, NULL dereferences, use after free...
+# Any finding fails. Each function is analyzed on its own (ipa=none): by
+# default only main is, following its calls, and the header libraries' code
+# uses up its budget before it gets far (a leak in find_config went unseen,
+# and gcc -fanalyzer misses it too).
+ANALYZE_CC ?= clang
+ANALYZE_FLAGS = --analyze -Xanalyzer -analyzer-werror -Xanalyzer -analyzer-config -Xanalyzer ipa=none
+analyze:
+	@for f in $(SRC) $(wildcard test/*.c); do \
+		echo "analyze $$f"; \
+		$(ANALYZE_CC) $(ANALYZE_FLAGS) -std=c99 $(CPPFLAGS) $(DEFINES) $$f -o /dev/null || exit 1; \
+	done
 
 # clang-format with .clang-format. CI checks with clang-format $(CLANG_FORMAT_VERSION)
 # (pip install clang-format==$(CLANG_FORMAT_VERSION)): other versions may format differently.
@@ -203,8 +220,8 @@ $(RUNTIME):
 # with musl (needs musl-gcc: the musl package on Arch, musl-tools on Debian).
 MUSL_CC ?= musl-gcc
 STATIC := $(NAME)-$(ARCH)-static
-LUA_VERSION := 5.1.5
-LUA_SHA256 := 2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333
+LUA_VERSION := 5.4.9
+LUA_SHA256 := 2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6
 LUA_SRC := $(TOOLS)/lua-$(LUA_VERSION)/src
 LUA_TARBALL := $(DL)/lua-$(LUA_VERSION).tar.gz
 

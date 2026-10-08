@@ -23,7 +23,7 @@ Greet everyone listed in a Lua config.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash
 ```
 
 It asks what to install and where, with its suggestion filled in (Enter
@@ -40,13 +40,13 @@ repo. Nothing is replaced until it all checks out. Arguments, after
 (`--help` lists them all):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- v1.2.3     # that release
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- nightly    # the last commit on main
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --appimage # the AppImage instead
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --strict   # fail without the attestation check
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- uninstall
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --yes      # no questions
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | PREFIX=~/opt bash     # somewhere else
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- v1.2.3     # that release
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- nightly    # the last commit on main
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- --appimage # the AppImage instead
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- --strict   # fail without the attestation check
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- uninstall
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- --yes      # no questions
+curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | PREFIX=~/opt bash     # somewhere else
 ```
 
 `--appimage` installs `__NAME__-<arch>.AppImage` as `__NAME__` instead of the
@@ -57,7 +57,15 @@ the static binary again takes them out. It can go with a version
 needs FUSE (the `fuse` or `fuse3` package). Releases made before attestations
 need `--skip-attestation`.
 
-To check a file you downloaded yourself: `gh attestation verify <file> --repo hugoocoto/c-tool`.
+The script comes from the latest release, attested like everything in it. To
+check it before running it:
+
+```sh
+curl -fsSLO https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh
+gh attestation verify install.sh --repo hugoocoto/c-tool && bash install.sh
+```
+
+The same checks any file you downloaded yourself: `gh attestation verify <file> --repo hugoocoto/c-tool`.
 
 If `~/.local/bin` is not in your `PATH` yet, add it to your shell's config.
 For the zsh completions, add this to `~/.zshrc`, before `compinit`:
@@ -121,11 +129,12 @@ options:
 <!-- What the config can have. Where it's read from is the same in every
 project. -->
 
-The config is a Lua 5.1 file. The first of these that exists is used, and
-the defaults are used if none does:
-
-1. `$XDG_CONFIG_HOME/__NAME__/config.lua` (usually `~/.config/__NAME__/config.lua`)
-2. `./config.lua`
+The config is a Lua 5.4 file: `$XDG_CONFIG_HOME/__NAME__/config.lua`
+(usually `~/.config/__NAME__/config.lua`), or the one given with `-c`. Without
+one, the defaults are used. A `config.lua` in the current directory is never
+read on its own: it can run any command, so running `__NAME__` inside a
+downloaded directory would run that directory's code. Use `-c config.lua` for
+that one.
 
 ```lua
 Config = {
@@ -139,12 +148,13 @@ It's plain Lua, so it can compute values, read environment variables, etc.
 
 ## Building
 
-Needs a C compiler, make and Lua 5.1 (or LuaJIT) with its headers:
+Needs a C compiler, make and Lua 5.4 with its headers (or Lua 5.1 or
+LuaJIT, with `make LUA=lua5.1` or `make LUA=luajit`):
 
 | Distro        | Packages                | For `make static` |
 |---------------|-------------------------|-------------------|
-| Arch          | `lua51` (or `luajit`)   | `musl`            |
-| Debian/Ubuntu | `liblua5.1-0-dev`       | `musl-tools`      |
+| Arch          | `lua54`                 | `musl`            |
+| Debian/Ubuntu | `liblua5.4-dev`         | `musl-tools`      |
 
 ```sh
 git clone --recursive https://github.com/hugoocoto/c-tool __NAME__
@@ -157,7 +167,7 @@ make
 |-----------------------------|---------------------------------------------------------------|
 | `make`                      | build `./__NAME__` (objects in `build/`), hardened            |
 | `make WERROR=1`             | the same, failing on any warning, like CI                     |
-| `make LUA=luajit`           | the same, with LuaJIT                                         |
+| `make LUA=luajit`           | the same, with LuaJIT (or `LUA=lua5.1`)                       |
 | `make debug`                | `-O0 -ggdb` with the address and undefined sanitizers         |
 | `make test`                 | build and run the tests, with the same sanitizers             |
 | `make test SANITIZE=thread` | the tests again, looking for data races                       |

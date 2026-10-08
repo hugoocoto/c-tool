@@ -24,16 +24,19 @@ Read the config from
 .I file
 instead of the default ones.
 .SH FILES
-The first of these that exists is the config. If none does, the defaults are
-used.
 .TP
 .I $XDG_CONFIG_HOME/__NAME__/config.lua
 .RI ( ~/.config/__NAME__/config.lua
 if XDG_CONFIG_HOME is not set)
-.TP
-.I ./config.lua
+The config, unless
+.B \-\-config
+gives another one. If it doesn't exist, the defaults are used. A
+.I config.lua
+in the current directory is only read when given with
+.BR \-\-config :
+being Lua, a config can run commands.
 .SH CONFIGURATION
-The config is a Lua 5.1 file that defines a
+The config is a Lua 5.4 file that defines a
 .B Config
 table. Every field is optional:
 .PP
