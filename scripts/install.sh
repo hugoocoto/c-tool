@@ -3,12 +3,14 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
 #
-# It installs the static binary for this machine (template-x86_64-static or
-# template-aarch64-static, from `uname -m`), the man page and the bash, zsh
-# and fish completions, checking them against the release's SHA256SUMS, and
-# SHA256SUMS against the release's build attestation when gh is logged in.
-# Nothing is replaced until everything is downloaded and checked. See usage()
-# for the arguments, which go after `bash -s --`.
+# It asks what to install and where, suggesting what it finds: the latest
+# release, ~/.local, the kind already installed. Then it installs the binary
+# for this machine (from `uname -m`), the man page and the bash, zsh and fish
+# completions, checking them against the release's SHA256SUMS, and SHA256SUMS
+# against the release's build attestation when gh is logged in. Nothing is
+# replaced until everything is downloaded and checked. Without a terminal, or
+# with --yes, it takes the suggestions without asking. See usage() for the
+# arguments, which go after `bash -s --`.
 set -euo pipefail
 
 NAME=template
@@ -19,13 +21,17 @@ usage() {
         cat <<EOF
 Usage: ... | bash -s -- [OPTIONS] [VERSION | nightly | uninstall]
 
-Installs $NAME from $GITHUB/$REPO/releases.
+Installs $NAME from $GITHUB/$REPO/releases. It asks what to install and
+where; the arguments change what it suggests.
 
   VERSION              that release (v1.2.3 or 1.2.3) instead of the latest one
   nightly              the build of the last commit on main
   uninstall            remove everything this script installs
   --appimage           the AppImage instead of the static binary (it needs
                        FUSE), with its applications menu entry and icon
+  --static             the static binary (the default, unless the AppImage is
+                       what's installed)
+  -y, --yes            don't ask, take the suggestions (also without a terminal)
   --strict             fail if the release's attestation can't be checked
                        (needs gh, logged in)
   --skip-attestation   don't check the attestation, for releases made
@@ -37,43 +43,117 @@ PREFIX is where it goes: ~/.local by default, /usr/local as root
 EOF
 }
 
-if [ -n "${PREFIX:-}" ]; then
-        case $PREFIX in
-        /*) ;;
-        *) PREFIX=$PWD/$PREFIX ;; # the install runs from a temp dir
-        esac
-elif [ "$(id -u)" = 0 ]; then
-        # Not root's ~/.local, nor, under a sudo that keeps HOME, root-owned
-        # files in the user's
-        PREFIX=/usr/local
-else
-        PREFIX=$HOME/.local
-fi
-PREFIX=${PREFIX%/}
-BINDIR=$PREFIX/bin
-MANDIR=$PREFIX/share/man/man1
-BASHDIR=$PREFIX/share/bash-completion/completions
-ZSHDIR=$PREFIX/share/zsh/site-functions
-# fish only looks for a user's completions in its own config dir
-if [ "$PREFIX" = "$HOME/.local" ]; then
-        FISHDIR=$HOME/.config/fish/completions
-else
-        FISHDIR=$PREFIX/share/fish/vendor_completions.d
-fi
-# The AppImage's menu entry and icon (only with --appimage)
-APPSDIR=$PREFIX/share/applications
-ICONSDIR=$PREFIX/share/icons
-DESKTOP_FILES=("$APPSDIR/$NAME.desktop" "$ICONSDIR"/hicolor/*/apps/"$NAME".{svg,png})
-FILES=("$BINDIR/$NAME" "$MANDIR/$NAME.1" "$BASHDIR/$NAME" "$ZSHDIR/_$NAME" "$FISHDIR/$NAME.fish"
-        "${DESKTOP_FILES[@]}")
-
 tmp=''
 staged=()
+interactive=''
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
+
+# ask VAR QUESTION SUGGESTION: the answer, typed on the terminal with the
+# suggestion already filled in (Enter takes it). It reads /dev/tty because
+# under `curl | bash` stdin is this script. Without a terminal, the suggestion.
+ask() {
+        local -n answer=$1
+        if [ -z "$interactive" ]; then
+                answer=$3
+                return
+        fi
+        # shellcheck disable=SC2034 # answer is the caller's variable
+        read -rep "$2: " -i "$3" answer </dev/tty || die "cancelled"
+}
+
+# choose VAR QUESTION SUGGESTION CHOICE...: ask until it's one of the choices
+choose() {
+        local var=$1 question=$2 suggestion=$3 choice choices
+        shift 3
+        choices="$*"
+        while :; do
+                ask "$var" "$question (${choices// /, })" "$suggestion"
+                for choice; do [ "${!var}" = "$choice" ] && return; done
+                [ -n "$interactive" ] || die "'${!var}' is not one of: $*"
+                say "It's one of: $*"
+        done
+}
+
+# confirm QUESTION: yes unless answered no; always yes without a terminal
+confirm() {
+        local ok
+        [ -n "$interactive" ] || return 0
+        read -rp "$1 [Y/n] " ok </dev/tty || die "cancelled"
+        case $ok in
+        '' | [yY]*) return 0 ;;
+        *) return 1 ;;
+        esac
+}
+
+# The default PREFIX: what's set, else ~/.local, or /usr/local as root (not
+# root's ~/.local, nor, under a sudo that keeps HOME, root-owned files in the
+# user's)
+default_prefix() {
+        if [ -n "${PREFIX:-}" ]; then
+                say "$PREFIX"
+        elif [ "$(id -u)" = 0 ]; then
+                say /usr/local
+        else
+                say "$HOME/.local"
+        fi
+}
+
+# Where everything goes, from PREFIX $1: ~ expanded (it's typed), relative
+# to the current dir (the install runs from a temp dir)
+set_prefix() {
+        PREFIX=$1
+        # shellcheck disable=SC2088 # the ~ typed, not expanded yet
+        case $PREFIX in
+        '~') PREFIX=$HOME ;;
+        '~/'*) PREFIX=$HOME/${PREFIX#'~/'} ;;
+        esac
+        [ -n "$PREFIX" ] || die "the install dir can't be empty"
+        case $PREFIX in
+        /*) ;;
+        *) PREFIX=$PWD/$PREFIX ;;
+        esac
+        [ "$PREFIX" = / ] || PREFIX=${PREFIX%/}
+        BINDIR=$PREFIX/bin
+        MANDIR=$PREFIX/share/man/man1
+        BASHDIR=$PREFIX/share/bash-completion/completions
+        ZSHDIR=$PREFIX/share/zsh/site-functions
+        # fish only looks for a user's completions in its own config dir
+        if [ "$PREFIX" = "$HOME/.local" ]; then
+                FISHDIR=$HOME/.config/fish/completions
+        else
+                FISHDIR=$PREFIX/share/fish/vendor_completions.d
+        fi
+        # The AppImage's menu entry and icon (only with --appimage)
+        APPSDIR=$PREFIX/share/applications
+        ICONSDIR=$PREFIX/share/icons
+        DESKTOP_FILES=("$APPSDIR/$NAME.desktop" "$ICONSDIR"/hicolor/*/apps/"$NAME".{svg,png})
+        FILES=("$BINDIR/$NAME" "$MANDIR/$NAME.1" "$BASHDIR/$NAME" "$ZSHDIR/_$NAME" "$FISHDIR/$NAME.fish"
+                "${DESKTOP_FILES[@]}")
+}
+
+# What's installed in PREFIX: "VERSION KIND", or nothing
+installed() {
+        local bin=$BINDIR/$NAME kind=static version
+        [ -x "$bin" ] || return 0
+        # AppImages have "AI" and their type (2) at offset 8
+        [ "$(od -An -tx1 -j8 -N3 "$bin" 2>/dev/null | tr -d ' \n')" != 414902 ] || kind=appimage
+        version=$("$bin" --version 2>/dev/null) && version=${version##* } || version=unknown
+        say "$version $kind"
+}
+
+# The latest release's tag: releases/latest redirects to releases/tag/<tag>,
+# or to releases if there are none
+latest() {
+        local tag
+        tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$GITHUB/$REPO/releases/latest") ||
+                die "can't reach $GITHUB/$REPO"
+        tag=${tag##*/}
+        [ "$tag" = releases ] || [ "$tag" = latest ] || say "$tag"
+}
 
 cleanup() {
         local f
@@ -90,22 +170,19 @@ verify() {
                 die "$1 doesn't match the release's SHA256SUMS"
 }
 
-# Check that SHA256SUMS was made by this repo's CI ($1 is --strict or empty)
-attest() {
-        local why=
+# Why the release's attestation can't be checked, if it can't
+no_attest() {
         if [ "$GITHUB" != https://github.com ]; then
-                why="$GITHUB is not GitHub"
+                say "$GITHUB is not GitHub"
         elif ! command -v gh >/dev/null; then
-                why="gh is not installed"
+                say "gh is not installed"
         elif ! gh auth status >/dev/null 2>&1; then
-                why="gh is not logged in (gh auth login)"
+                say "gh is not logged in (gh auth login)"
         fi
-        if [ -n "$why" ]; then
-                [ -z "$1" ] || die "can't check the release's attestation: $why"
-                say "Not checking the release's attestation: $why. SHA256SUMS only catches broken"
-                say "downloads, not a release whose files were all replaced."
-                return
-        fi
+}
+
+# Check that SHA256SUMS was made by this repo's CI
+attest() {
         gh attestation verify SHA256SUMS --repo "$REPO" \
                 --signer-workflow "$REPO/.github/workflows/ci.yml" >/dev/null 2>&1 ||
                 die "SHA256SUMS has no valid attestation from $REPO's CI (if the release is older than its attestations: --skip-attestation)"
@@ -125,17 +202,21 @@ commit() {
 }
 
 uninstall() {
-        local f removed=0
+        local f found=()
         # Whatever is there: `make install` puts it in the same places
         for f in "${FILES[@]}"; do
-                if [ -e "$f" ] || [ -L "$f" ]; then
-                        rm -f "$f"
-                        say "Removed $f"
-                        removed=1
-                fi
+                if [ -e "$f" ] || [ -L "$f" ]; then found+=("$f"); fi
         done
+        if [ ${#found[@]} = 0 ]; then
+                say "$NAME is not installed in $PREFIX"
+                return
+        fi
+        say "Installed in $PREFIX:"
+        printf '  %s\n' "${found[@]}"
+        confirm "Remove them?" || die "cancelled"
+        rm -f "${found[@]}"
         refresh_desktop
-        [ "$removed" = 1 ] || say "$NAME was not installed in $PREFIX"
+        say "Removed $NAME from $PREFIX"
 }
 
 # Update the menu and icon caches, but only the ones that already exist:
@@ -180,52 +261,89 @@ remove_desktop() {
 # The whole script runs from here, at its last line: if the download is cut,
 # bash runs nothing instead of half of it
 main() {
-        local tag='' appimage='' strict='' skip_attest='' arch url bin version found arg
+        local tag='' kind='' yes='' strict='' skip_attest='' action=install
+        local arch url bin version found arg prefix current newest why checks
 
         for arg; do
                 case $arg in
                 -h | --help) usage; return ;;
-                --appimage) appimage=1 ;;
-                --strict) strict=--strict ;;
+                --appimage) kind=appimage ;;
+                --static) kind=static ;;
+                -y | --yes) yes=1 ;;
+                --strict) strict=1 ;;
                 --skip-attestation) skip_attest=1 ;;
                 -*) die "unknown option $arg (see --help)" ;;
+                uninstall) action=uninstall ;;
                 *)
                         [ -z "$tag" ] || die "both $tag and $arg given, pick one"
                         tag=$arg
                         ;;
                 esac
         done
-        case $tag in
-        [0-9]*) tag=v$tag ;;
-        esac
         [ -z "$strict" ] || [ -z "$skip_attest" ] || die "--strict and --skip-attestation don't go together"
-        if [ "$tag" = uninstall ] && [ -n "$appimage$strict$skip_attest" ]; then
-                die "uninstall takes no options"
-        fi
+        if [ -z "$yes" ] && { : </dev/tty; } 2>/dev/null; then interactive=1; fi
 
         [ "$(uname -s)" = Linux ] || die "there are only Linux builds"
-        [ "$tag" != uninstall ] || { uninstall; return; }
-        for arg in curl sha256sum awk tar gzip install mktemp; do
+
+        [ -z "$interactive" ] || say "Installs $NAME from $GITHUB/$REPO (Enter takes the suggestion, Ctrl-C quits)"
+        choose action "Install or uninstall" "$action" install uninstall
+        prefix=$(default_prefix)
+        # shellcheck disable=SC2088 # shown as typed, set_prefix expands it
+        [ "$prefix" != "$HOME/.local" ] || prefix='~/.local'
+        if [ "$action" = uninstall ]; then
+                ask prefix "Uninstall from" "$prefix"
+                set_prefix "$prefix"
+                uninstall
+                return
+        fi
+        ask prefix "Install to" "$prefix"
+        set_prefix "$prefix"
+
+        for arg in curl sha256sum awk tar gzip install mktemp od; do
                 command -v "$arg" >/dev/null || die "needs $arg"
         done
-
         case $(uname -m) in
         x86_64 | amd64) arch=x86_64 ;;
         aarch64 | arm64) arch=aarch64 ;;
         *) die "there is no build for $(uname -m)" ;;
         esac
-        bin=$NAME-$arch-static
-        [ -z "$appimage" ] || bin=$NAME-$arch.AppImage
 
-        if [ -z "$tag" ]; then
-                # releases/latest redirects to releases/tag/<tag>, or to
-                # releases if there are none
-                tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$GITHUB/$REPO/releases/latest") ||
-                        die "can't reach $GITHUB/$REPO"
-                tag=${tag##*/}
-                [ "$tag" != releases ] && [ "$tag" != latest ] ||
-                        die "$REPO has no releases yet, install nightly: ... | bash -s -- nightly"
+        current=$(installed)
+        newest=$(latest)
+        if [ -n "$current" ]; then
+                say "Installed now: $NAME ${current% *} (${current#* }), the latest release is ${newest:-none}"
+        else
+                say "The latest release is ${newest:-none}"
         fi
+        [ -n "$tag" ] || tag=${newest:-nightly}
+        ask tag "Version (vX.Y.Z or nightly)" "$tag"
+        case $tag in
+        [0-9]*) tag=v$tag ;;
+        '') die "the version can't be empty" ;;
+        esac
+
+        # The kind installed now, else the static binary: it runs anywhere
+        [ -n "$kind" ] || kind=${current#* }
+        [ "$kind" = appimage ] || kind=static
+        choose kind "Static binary or AppImage" "$kind" static appimage
+        if [ "$kind" = appimage ]; then
+                bin=$NAME-$arch.AppImage
+        else
+                bin=$NAME-$arch-static
+        fi
+
+        why=''
+        [ -n "$skip_attest" ] || why=$(no_attest)
+        if [ -n "$skip_attest" ]; then
+                checks="SHA256SUMS only (--skip-attestation)"
+        elif [ -n "$why" ]; then
+                [ -z "$strict" ] || die "can't check the release's attestation: $why"
+                checks="SHA256SUMS only: $why. It catches broken downloads, not a release whose files were all replaced"
+        else
+                checks="SHA256SUMS and the release's attestation"
+        fi
+        say "Checks: $checks"
+        confirm "Install $NAME $tag ($kind, $arch) to $PREFIX?" || die "cancelled"
 
         tmp=$(mktemp -d)
         trap cleanup EXIT
@@ -235,7 +353,7 @@ main() {
         url=$GITHUB/$REPO/releases/download/$tag
         fetch "$url/SHA256SUMS" SHA256SUMS ||
                 die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
-        [ -n "$skip_attest" ] || attest "$strict"
+        [ -n "$skip_attest" ] || [ -n "$why" ] || attest
         fetch "$url/$bin" "$bin" || die "release $tag has no $bin"
         fetch "$url/$NAME-completions.tar.gz" "$NAME-completions.tar.gz" || die "release $tag has no completions"
         fetch "$url/$NAME.1" "$NAME.1" || die "release $tag has no man page"
@@ -252,7 +370,7 @@ main() {
         stage 644 "$NAME-completions/$NAME.fish" "$FISHDIR/$NAME.fish"
         stage 644 "$NAME.1" "$MANDIR/$NAME.1"
         commit
-        if [ -n "$appimage" ]; then
+        if [ "$kind" = appimage ]; then
                 integrate_desktop "$bin"
         else
                 remove_desktop
@@ -260,9 +378,9 @@ main() {
 
         if version=$("$BINDIR/$NAME" --version 2>/dev/null); then
                 say "Installed $version to $BINDIR/$NAME"
-        elif [ -n "$appimage" ]; then
+        elif [ "$kind" = appimage ]; then
                 say "Installed $bin to $BINDIR/$NAME, but it can't run: AppImages need FUSE"
-                say "(the fuse or fuse3 package). Or install the static binary, without --appimage."
+                say "(the fuse or fuse3 package). Or install the static binary."
         else
                 die "installed $BINDIR/$NAME, but it doesn't run"
         fi

@@ -4,12 +4,14 @@
 #
 #   scripts/template-init.sh [NAME [DESCRIPTION]]
 #
-# NAME defaults to the git repo's name, and DESCRIPTION (one line) to the
-# GitHub repo's description, or it's asked for. Every placeholder in every file
-# (the name, the GitHub repo, the author, the description...) is replaced, so
-# the code, the docs, the man page, the completions, install.sh, the issue
-# forms and the README all name the new project. Then it registers the
-# submodules, enables the git hooks and deletes itself. Review and commit.
+# It asks for the name, a one-line description, the GitHub repo and the
+# author, suggesting what it finds: NAME or the git repo's name, DESCRIPTION
+# or the GitHub repo's description, origin, and git config. Every placeholder
+# in every file is then replaced, so the code, the docs, the man page, the
+# completions, install.sh, the issue forms and the README all name the new
+# project. Then it registers the submodules, enables the git hooks and
+# deletes itself. Review and commit. Without a terminal it takes the
+# suggestions without asking.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,6 +19,29 @@ die() { echo "template-init: $*" >&2; exit 1; }
 # Escape for the pattern and for the replacement of a sed s///
 pat() { printf '%s' "$1" | sed 's/[]\/$*.^[]/\\&/g'; }
 rep() { printf '%s' "$1" | sed 's/[&/\]/\\&/g'; }
+
+interactive=''
+if { : </dev/tty; } 2>/dev/null; then interactive=1; fi
+
+# ask VAR QUESTION SUGGESTION CHECK: the answer, with the suggestion filled in
+# (Enter takes it), asked again until `CHECK answer` prints nothing (else it
+# prints what's wrong). Without a terminal, the suggestion, which must pass.
+ask() {
+        local -n answer=$1
+        local problem
+        while :; do
+                if [ -n "$interactive" ]; then
+                        # shellcheck disable=SC2034 # answer is the caller's variable
+                        read -rep "$2: " -i "$3" answer </dev/tty || die "cancelled"
+                else
+                        answer=$3
+                fi
+                problem=$("$4" "$answer")
+                [ -n "$problem" ] || return 0
+                [ -n "$interactive" ] || die "$problem (run it in a terminal to answer)"
+                echo "$problem"
+        done
+}
 
 # The placeholders, as they are in the template
 old_name=template
@@ -28,39 +53,67 @@ old_desc="Greet everyone listed in a Lua config"
 git rev-parse --show-toplevel >/dev/null || die "not in a git repo (git says why above)"
 remote=$(git remote get-url origin 2>/dev/null || true)
 
-name=${1:-$(basename "${remote:-$(git rev-parse --show-toplevel)}" .git)}
-[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] ||
-        die "'$name' can't be a program name, pass one: $0 NAME"
-[ "$name" != "$old_name" ] || die "the repo is called $old_name, pass a name: $0 NAME"
+check_name() {
+        if ! [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+                echo "'$1' can't be a program name: letters, digits, - and _"
+        elif [ "$1" = "$old_name" ]; then
+                echo "that's the template's name, pick the new one"
+        fi
+}
+check_desc() {
+        if [ -z "$1" ]; then
+                echo "the description can't be empty"
+        elif [[ $1 == *[\"\\\$\`]* ]]; then
+                echo "the description can't have \" \\ \$ or \`"
+        fi
+}
+check_slug() {
+        [[ $1 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || echo "'$1' is not owner/repo"
+}
+check_author() { [ -n "$1" ] || echo "the author can't be empty"; }
+check_email() { [[ $1 == ?*@?* ]] || echo "'$1' is not an email"; }
 
+name=${1:-$(basename "${remote:-$(git rev-parse --show-toplevel)}" .git)}
+[ "$name" != "$old_name" ] || name=''
 # owner/repo on GitHub: badges, links, install.sh
 slug=$(printf '%s' "$remote" | sed -nE 's#^.*github\.com[:/]+([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//')
-[ -n "$slug" ] || echo "warning: origin is not on GitHub, the links will point to $old_slug" >&2
-slug=${slug:-$old_slug}
+[ -n "$slug" ] || echo "origin is not on GitHub: say which repo the links should point to"
 author=$(git config user.name || echo "$old_author")
 email=$(git config user.email || echo "$old_email")
 year=$(date +%Y)
 
 desc=${2:-}
-if [ -z "$desc" ] && [ "$slug" != "$old_slug" ] && command -v gh >/dev/null; then
+if [ -z "$desc" ] && [ -n "$slug" ] && command -v gh >/dev/null; then
         desc=$(gh repo view "$slug" --json description -q .description 2>/dev/null || true)
 fi
-[ -n "$desc" ] || read -rp "One-line description (like \"$old_desc\"): " desc
+
+[ -z "$interactive" ] || echo "Enter takes the suggestion, Ctrl-C quits"
+ask name "Program name" "$name" check_name
+ask desc "One-line description (like \"$old_desc\")" "$desc" check_desc
+# Not on GitHub yet: where it'll most likely go
+if [ -z "$slug" ]; then
+        owner=$(gh api user -q .login 2>/dev/null || true)
+        slug=${owner:-${USER:-owner}}/$name
+fi
+ask slug "GitHub repo (owner/repo)" "$slug" check_slug
+ask author "Author" "$author" check_author
+ask email "Author's email" "$email" check_email
 desc=${desc%.}
-[ -n "$desc" ] || die "the description can't be empty"
-[[ $desc != *[\"\\\$\`]* ]] || die "the description can't have \" \\ \$ or \`"
 desc=${desc^}
 # For the man page and comments: "foo - do things", unless it starts with
 # an acronym
 desc_lower=$desc
 [[ ${desc:1:1} != [[:lower:]] ]] || desc_lower=${desc,}
 
+echo
 echo "name:        $name"
 echo "description: $desc"
 echo "repo:        $slug"
 echo "author:      $author <$email>"
-read -rp "Initialize the project with these? [Y/n] " ok
-[ "${ok:-y}" = y ] || [ "${ok:-y}" = Y ] || die "cancelled"
+if [ -n "$interactive" ]; then
+        read -rp "Initialize the project with these? [Y/n] " ok </dev/tty
+        [ "${ok:-y}" = y ] || [ "${ok:-y}" = Y ] || die "cancelled"
+fi
 
 # The README part about using the template
 sed -i '/<!-- template-init: remove from here -->/,/<!-- template-init: to here -->/d' README.md

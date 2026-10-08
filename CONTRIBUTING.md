@@ -140,7 +140,9 @@ git add src/thirdparty/flag
 ## Releases
 
 Maintainers release from main with `scripts/release.sh`, which asks for the
-version (semantic versioning: X.Y.Z, bigger than the last one) and pushes its
+version (semantic versioning: X.Y.Z, bigger than the last one), suggesting the
+next one from the commits' first words (Remove... makes it major, Add...
+minor, the rest a patch; before 1.0.0, removing is minor too), and pushes its
 tag. CI then builds and publishes the release. Every push to main updates the
 nightly release.
 

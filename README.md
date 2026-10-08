@@ -9,11 +9,12 @@ Greet everyone listed in a Lua config.
 <!-- template-init: remove from here -->
 > **This is a template for C command line tools.** Create a repo from it
 > (GitHub's *Use this template* button, or a copy), clone it with
-> `--recursive` and run `scripts/template-init.sh`. It asks for a one-line
-> description, then names everything after the repo (binary, config dir, man
-> page, completions, AppImage, install script, these docs), puts your name
-> from git config as the author, registers the submodules, enables the git
-> hooks, removes this note and deletes itself. What's left to write is the
+> `--recursive` and run `scripts/template-init.sh`. It asks for the name, a
+> one-line description, the GitHub repo and the author, suggesting what it
+> finds in git, then names everything after it (binary, config dir, man
+> page, completions, AppImage, install script, these docs), puts you in as
+> the author, registers the submodules, enables the git hooks, removes this
+> note and deletes itself. What's left to write is the
 > program, its tests, and the [Usage](#usage) and
 > [Configuration](#configuration) sections of this README, which say so in
 > comments.
@@ -25,15 +26,18 @@ Greet everyone listed in a Lua config.
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
 ```
 
-This installs the latest release in `~/.local` (`/usr/local` as root): the
+It asks what to install and where, with its suggestion filled in (Enter
+takes it): the latest release, in `~/.local` (`/usr/local` as root), as the
 static binary for your machine (`template-x86_64-static` or
-`template-aarch64-static`, for any x86_64 or aarch64 Linux), its man page and
-its bash, zsh and fish completions. Being static, it needs nothing else
-installed. Everything is checked against the release's `SHA256SUMS`, and if
-[`gh`](https://cli.github.com) is installed and logged in, `SHA256SUMS` is
+`template-aarch64-static`, for any x86_64 or aarch64 Linux), or as the
+AppImage if that's what you have installed. With the program come its man
+page and its bash, zsh and fish completions. Being static, it needs nothing
+else installed. Everything is checked against the release's `SHA256SUMS`, and
+if [`gh`](https://cli.github.com) is installed and logged in, `SHA256SUMS` is
 checked against the release's attestation, proof that CI built it from this
-repo. Nothing is replaced until it all checks out. Arguments go after
-`bash -s --` (`--help` lists them):
+repo. Nothing is replaced until it all checks out. Arguments, after
+`bash -s --`, change the suggestions, and `--yes` takes them without asking
+(`--help` lists them all):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- v1.2.3     # that release
@@ -41,6 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/insta
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --appimage # the AppImage instead
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --strict   # fail without the attestation check
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --yes      # no questions
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | PREFIX=~/opt bash     # somewhere else
 ```
 
@@ -180,7 +185,9 @@ uncommitted changes, and `unknown` outside git.
 - Every push to main that passes CI updates the
   [nightly](../../releases/tag/nightly) release.
 - Releases are made with `scripts/release.sh`: it asks for the new version
-  (bigger than the last one), tags main with it and pushes the tag, and CI
+  (bigger than the last one), suggesting the next one from the commits since
+  the last release (major if they remove things, minor if they add things,
+  else patch), tags main with it and pushes the tag, and CI
   builds and publishes the release.
 - Each release's notes list its commits, grouped in Added, Changed, Fixed and
   Removed by their first word, and `CHANGELOG.md` in every release has them
