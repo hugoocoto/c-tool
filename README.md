@@ -25,24 +25,34 @@ Greet everyone listed in a Lua config.
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash
 ```
 
-This installs the latest release in `~/.local`: the static binary for your
-machine (`template-x86_64-static` or `template-aarch64-static`, for any
-x86_64 or aarch64 Linux), its man page and its bash, zsh and fish
-completions, after checking them against the release's `SHA256SUMS`. Being
-static, it needs nothing else installed. Arguments go after `bash -s --`:
+This installs the latest release in `~/.local` (`/usr/local` as root): the
+static binary for your machine (`template-x86_64-static` or
+`template-aarch64-static`, for any x86_64 or aarch64 Linux), its man page and
+its bash, zsh and fish completions. Being static, it needs nothing else
+installed. Everything is checked against the release's `SHA256SUMS`, and if
+[`gh`](https://cli.github.com) is installed and logged in, `SHA256SUMS` is
+checked against the release's attestation, proof that CI built it from this
+repo. Nothing is replaced until it all checks out. Arguments go after
+`bash -s --` (`--help` lists them):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- v1.2.3     # that release
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- nightly    # the last commit on main
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --appimage # the AppImage instead
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- --strict   # fail without the attestation check
 curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | bash -s -- uninstall
-curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | sudo PREFIX=/usr/local bash
+curl -fsSL https://raw.githubusercontent.com/hugoocoto/c-tool/main/scripts/install.sh | PREFIX=~/opt bash     # somewhere else
 ```
 
 `--appimage` installs `template-<arch>.AppImage` as `template` instead of the
-static binary, and adds it to your applications menu, with its icon. It can
-go with a version (`--appimage v1.2.3`), and `uninstall` removes it all. Both
-work the same, but the AppImage needs FUSE (the `fuse` or `fuse3` package).
+static binary, and adds it to your applications menu, with its icon; installing
+the static binary again takes them out. It can go with a version
+(`--appimage v1.2.3`), and `uninstall` removes it all (also what
+`make install` put in the same places). Both work the same, but the AppImage
+needs FUSE (the `fuse` or `fuse3` package). Releases made before attestations
+need `--skip-attestation`.
+
+To check a file you downloaded yourself: `gh attestation verify <file> --repo hugoocoto/c-tool`.
 
 If `~/.local/bin` is not in your `PATH` yet, add it to your shell's config.
 For the zsh completions, add this to `~/.zshrc`, before `compinit`:

@@ -5,6 +5,8 @@ name: CI
 # its own. Both have, for x86_64 and aarch64, the AppImage and a static (musl)
 # binary, plus a source tarball, the shell completions, the man page, the docs
 # PDFs, the changelog and their checksums, and are only published if every test passes.
+# Their files are attested (signed as built by this workflow), which is what
+# scripts/install.sh checks, and it is run on them once they're published.
 # Their notes are their part of the changelog (scripts/changelog.sh).
 
 on:
@@ -61,6 +63,9 @@ jobs:
 
       - name: Check the format
         run: make check-format
+
+      - name: Check the install script
+        run: shellcheck scripts/install.sh
 
   docs:
     runs-on: ubuntu-latest
@@ -157,6 +162,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write # for the attestation
+      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -189,6 +196,12 @@ jobs:
           find release -mindepth 1 -type d -delete
           cd release && sha256sum * >SHA256SUMS
 
+      # Proof that these files were built here, from this commit: install.sh
+      # checks SHA256SUMS with `gh attestation verify`, and SHA256SUMS the rest
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: release/*
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -208,3 +221,52 @@ jobs:
           fi
           gh release create nightly release/* --repo "$GITHUB_REPOSITORY" --prerelease --verify-tag \
             --title "Nightly $version" --notes-file notes.md
+
+  install:
+    # scripts/install.sh, on the release just published, as users run it
+    needs: release
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install, switch to the AppImage and back, uninstall
+        env:
+          GH_TOKEN: ${{ github.token }} # gh attestation verify needs a login
+          REPO: ${{ github.repository }}
+          APPIMAGE_EXTRACT_AND_RUN: 1 # the runners have no FUSE
+        run: |
+          [ "$GITHUB_REF_TYPE" = tag ] && tag=$GITHUB_REF_NAME || tag=nightly
+          name=$(sed -n 's/^NAME := //p' Makefile)
+          version=$(make -s version)
+          install=$PWD/scripts/install.sh
+          cd "$RUNNER_TEMP"
+          export PREFIX=prefix # relative on purpose
+          # --strict: no attestation fails
+          bash "$install" --strict "$tag"
+          [[ $(prefix/bin/$name --version) == "$name $version" ]]
+          test -f "prefix/share/man/man1/$name.1"
+          test -f "prefix/share/bash-completion/completions/$name"
+          bash "$install" --strict --appimage "$tag"
+          [[ $(prefix/bin/$name --version) == "$name $version" ]]
+          test -f "prefix/share/applications/$name.desktop"
+          bash "$install" --strict "$tag"
+          test ! -e "prefix/share/applications/$name.desktop"
+          bash "$install" uninstall
+          [ -z "$(find prefix -type f)" ]
+
+      - name: Install as root, to /usr/local
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ "$GITHUB_REF_TYPE" = tag ] && tag=$GITHUB_REF_NAME || tag=nightly
+          name=$(sed -n 's/^NAME := //p' Makefile)
+          sudo --preserve-env=GH_TOKEN,REPO bash scripts/install.sh --strict "$tag"
+          test -x "/usr/local/bin/$name"
+          sudo --preserve-env=REPO bash scripts/install.sh uninstall
+          test ! -e "/usr/local/bin/$name"
