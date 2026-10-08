@@ -10,6 +10,12 @@ ifeq ($(VERSION),)
 VERSION := $(shell cat VERSION 2>/dev/null)
 endif
 DATE := $(shell git log -1 --format=%cs 2>/dev/null || date +%F)
+# Every date the build writes (tarballs, the AppImage) is the last commit's,
+# so building a commit again gives the same files
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
+export SOURCE_DATE_EPOCH
+# Tarballs with only what's in them: no dates, owners or umask
+TAR := tar --sort=name --mtime=@$(SOURCE_DATE_EPOCH) --owner=0 --group=0 --numeric-owner --mode=go-w --format=gnu
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -33,10 +39,18 @@ endif
 # Sets LUA (lua5.1 by default, `make LUA=luajit` also works), LUA_CFLAGS and LUA_LIBS
 include $(THIRDPARTY)/conf/CONF_FLAGS
 
-CFLAGS ?= -O2
-CPPFLAGS += -D_DEFAULT_SOURCE -Isrc $(addprefix -I$(THIRDPARTY)/,flag cum conf) $(LUA_CFLAGS)
+# Hardened by default: buffer overflow checks (_FORTIFY_SOURCE, which needs
+# optimization, so `make debug` and `make test` leave it out), stack canaries,
+# and a position independent binary with read-only relocations
+HARDEN_CFLAGS := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fPIE
+CFLAGS ?= -O2 $(HARDEN_CFLAGS)
+LDFLAGS ?= -pie -Wl,-z,relro,-z,now
+# `make WERROR=1` (CI) makes every warning an error
+WARN = -Wall -Wextra -Wformat=2 -Wshadow $(if $(WERROR),-Werror)
+# The libraries are -isystem: their warnings are theirs, not this project's
+CPPFLAGS += -D_DEFAULT_SOURCE -Isrc $(addprefix -isystem $(THIRDPARTY)/,flag cum conf) $(LUA_CFLAGS)
 LDLIBS += $(LUA_LIBS) -pthread
-ALL_CFLAGS = -std=c99 -Wall -Wextra $(CFLAGS)
+ALL_CFLAGS = -std=c99 $(WARN) $(CFLAGS)
 DEFINES = -DNAME='"$(NAME)"' $(if $(VERSION),-DVERSION='"$(VERSION)"')
 
 # Runtime checks for `make debug` and `make test`. address finds memory errors
@@ -78,7 +92,7 @@ debug:
 comma := ,
 TEST_BUILD := $(BUILD)/test/$(subst $(comma),-,$(SANITIZE))
 test: export TEST_CC = $(CC)
-test: export TEST_CFLAGS = -std=c99 -Wall -Wextra -O1 -ggdb $(SAN_FLAGS) $(CPPFLAGS)
+test: export TEST_CFLAGS = -std=c99 $(WARN) -O1 -ggdb $(SAN_FLAGS) $(CPPFLAGS)
 test: export TEST_LDLIBS = $(SAN_FLAGS) $(LDLIBS)
 test: export TEST_BIN = $(TEST_BUILD)/$(NAME)
 test: export TEST_OUT = $(TEST_BUILD)/tests
@@ -130,27 +144,59 @@ APPIMAGE := $(NAME)-$(ARCH).AppImage
 # The tools are AppImages too: run them without FUSE (CI has none)
 export APPIMAGE_EXTRACT_AND_RUN = 1
 
+# The tools, pinned to a release and checked against its checksums (from
+# GitHub's asset digests) before every use: they end up in what's released.
+# Downloaded once into $(DL), which CI caches. The AppImage runtime is pinned
+# too, or appimagetool would download its latest one.
+DL := $(TOOLS)/downloads
+LINUXDEPLOY_VERSION := 1-alpha-20251107-1
+LINUXDEPLOY_SHA256_x86_64 := c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+LINUXDEPLOY_SHA256_aarch64 := 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+LINUXDEPLOY := $(DL)/linuxdeploy-$(LINUXDEPLOY_VERSION)-$(ARCH).AppImage
+APPIMAGETOOL_VERSION := 1.9.1
+APPIMAGETOOL_SHA256_x86_64 := ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+APPIMAGETOOL_SHA256_aarch64 := f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+APPIMAGETOOL := $(DL)/appimagetool-$(APPIMAGETOOL_VERSION)-$(ARCH).AppImage
+RUNTIME_VERSION := 20251108
+RUNTIME_SHA256_x86_64 := 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+RUNTIME_SHA256_aarch64 := 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
+RUNTIME := $(DL)/runtime-$(RUNTIME_VERSION)-$(ARCH)
+
+# linuxdeploy's own strip is too old for the libraries of newer distros
+# (.relr.dyn sections), so the system's strips what it bundles
+STRIP ?= strip
+
+# $(call check,FILE,SHA256): stop, and remove FILE, unless it has that checksum
+check = @echo '$(2)  $(1)' | sha256sum -c --quiet || { rm -f $(1); echo "$(1): wrong checksum, removed it" >&2; exit 1; }
+
 appimage: $(APPIMAGE)
 
-$(APPIMAGE): $(NAME) assets/icon.svg $(TOOLS)/linuxdeploy $(TOOLS)/appimagetool
+$(APPIMAGE): $(NAME) assets/icon.svg $(LINUXDEPLOY) $(APPIMAGETOOL) $(RUNTIME)
+	$(call check,$(LINUXDEPLOY),$(LINUXDEPLOY_SHA256_$(ARCH)))
+	$(call check,$(APPIMAGETOOL),$(APPIMAGETOOL_SHA256_$(ARCH)))
+	$(call check,$(RUNTIME),$(RUNTIME_SHA256_$(ARCH)))
+	chmod +x $(LINUXDEPLOY) $(APPIMAGETOOL)
 	rm -rf $(APPDIR)
 	mkdir -p $(APPDIR)
 	printf '[Desktop Entry]\nType=Application\nName=%s\nComment=%s\nExec=%s\nIcon=%s\nTerminal=true\nCategories=Utility;\n' \
 		'$(NAME)' '$(subst ','\'',$(DESCRIPTION))' '$(NAME)' '$(NAME)' >$(BUILD)/$(NAME).desktop
 	cp assets/icon.svg $(BUILD)/$(NAME).svg
-	$(TOOLS)/linuxdeploy --appdir $(APPDIR) --executable $(NAME) \
+	NO_STRIP=1 $(LINUXDEPLOY) --appdir $(APPDIR) --executable $(NAME) \
 		--desktop-file $(BUILD)/$(NAME).desktop --icon-file $(BUILD)/$(NAME).svg
-	ARCH=$(ARCH) $(TOOLS)/appimagetool --no-appstream $(APPDIR) $@
+	find $(APPDIR)/usr/bin $(APPDIR)/usr/lib -type f -exec $(STRIP) --strip-unneeded {} +
+	ARCH=$(ARCH) $(APPIMAGETOOL) --no-appstream --runtime-file $(RUNTIME) $(APPDIR) $@
 
-$(TOOLS)/linuxdeploy:
+$(LINUXDEPLOY):
 	@mkdir -p $(@D)
-	curl -fsSL -o $@ https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$(ARCH).AppImage
-	chmod +x $@
+	curl -fsSL -o $@ https://github.com/linuxdeploy/linuxdeploy/releases/download/$(LINUXDEPLOY_VERSION)/linuxdeploy-$(ARCH).AppImage
 
-$(TOOLS)/appimagetool:
+$(APPIMAGETOOL):
 	@mkdir -p $(@D)
-	curl -fsSL -o $@ https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(ARCH).AppImage
-	chmod +x $@
+	curl -fsSL -o $@ https://github.com/AppImage/appimagetool/releases/download/$(APPIMAGETOOL_VERSION)/appimagetool-$(ARCH).AppImage
+
+$(RUNTIME):
+	@mkdir -p $(@D)
+	curl -fsSL -o $@ https://github.com/AppImage/type2-runtime/releases/download/$(RUNTIME_VERSION)/runtime-$(ARCH)
 
 # Fully static binary, $(NAME)-$(ARCH)-static, that runs on any Linux of its
 # arch. Distro Lua libraries are built for glibc, so Lua is built from source
@@ -160,6 +206,7 @@ STATIC := $(NAME)-$(ARCH)-static
 LUA_VERSION := 5.1.5
 LUA_SHA256 := 2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333
 LUA_SRC := $(TOOLS)/lua-$(LUA_VERSION)/src
+LUA_TARBALL := $(DL)/lua-$(LUA_VERSION).tar.gz
 
 static: $(STATIC)
 
@@ -168,11 +215,14 @@ $(STATIC): $(LUA_SRC)/liblua.a FORCE
 		LUA_CFLAGS=-I$(LUA_SRC) LUA_LIBS='$(LUA_SRC)/liblua.a -lm' LDFLAGS='-static -s' $(BUILD)/static/$(NAME)
 	cp $(BUILD)/static/$(NAME) $@
 
-$(LUA_SRC)/liblua.a:
-	@mkdir -p $(TOOLS)
-	curl -fsSL -o $(TOOLS)/lua-$(LUA_VERSION).tar.gz https://www.lua.org/ftp/lua-$(LUA_VERSION).tar.gz
-	echo '$(LUA_SHA256)  $(TOOLS)/lua-$(LUA_VERSION).tar.gz' | sha256sum -c --quiet
-	tar -xzf $(TOOLS)/lua-$(LUA_VERSION).tar.gz -C $(TOOLS)
+$(LUA_TARBALL):
+	@mkdir -p $(@D)
+	curl -fsSL -o $@ https://www.lua.org/ftp/lua-$(LUA_VERSION).tar.gz
+
+$(LUA_SRC)/liblua.a: $(LUA_TARBALL)
+	$(call check,$(LUA_TARBALL),$(LUA_SHA256))
+	rm -rf $(TOOLS)/lua-$(LUA_VERSION)
+	tar -xzf $(LUA_TARBALL) -C $(TOOLS)
 	$(MAKE) -C $(LUA_SRC) a CC=$(MUSL_CC) MYCFLAGS=-DLUA_USE_POSIX
 
 FORCE:
@@ -184,11 +234,11 @@ dist:
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/$(NAME)-$(VERSION)
 	git ls-files --recurse-submodules | tar -cf - -T - | tar -xf - -C $(BUILD)/dist/$(NAME)-$(VERSION)
 	echo $(VERSION) >$(BUILD)/dist/$(NAME)-$(VERSION)/VERSION
-	tar -czf $(NAME)-$(VERSION).tar.gz -C $(BUILD)/dist $(NAME)-$(VERSION)
+	$(TAR) -cf - -C $(BUILD)/dist $(NAME)-$(VERSION) | gzip -9n >$(NAME)-$(VERSION).tar.gz
 
 # The completions on their own, for the static binary and the AppImage
 completions:
-	tar -czf $(NAME)-completions.tar.gz --transform 's|^completions|$(NAME)-completions|' completions
+	$(TAR) --transform 's|^completions|$(NAME)-completions|' -cf - completions | gzip -9n >$(NAME)-completions.tar.gz
 
 # Grouped commit messages since the first release, like each release has
 changelog:

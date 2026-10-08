@@ -63,8 +63,10 @@ reviewed much faster than big ones: split them when you can.
 
 ## Code style
 
-- C99 (`-std=c99`), with POSIX (`_DEFAULT_SOURCE`). No new warnings with
-  `-Wall -Wextra`.
+- C99 (`-std=c99`), with POSIX (`_DEFAULT_SOURCE`). No warnings with
+  `-Wall -Wextra -Wformat=2 -Wshadow`: CI builds with `make WERROR=1`, which
+  makes them errors (do the same to check). Warnings in `src/thirdparty/`
+  don't count, its headers are included with `-isystem`.
 - Format with `make format` (it leaves `src/thirdparty/` alone). CI checks it
   with the clang-format version in the Makefile (`CLANG_FORMAT_VERSION`): if
   yours formats differently, install that one with
@@ -94,7 +96,8 @@ Writing tests:
 - Tests can include anything in `src/` and `src/thirdparty/`, and link with
   pthreads and Lua.
 - `$TEST_BIN` is the program, also built with the sanitizers, for tests that
-  run it (see `test/cli.c`): a leak in the program fails those tests too.
+  run it (see `test/cli.c` and `test/output.c`, which checks what it
+  prints): a leak in the program fails those tests too.
 - Tests don't depend on each other or on the order they run in.
 
 ## Documentation

@@ -48,6 +48,7 @@ staged=()
 interactive=''
 
 say() { printf '%s\n' "$*"; }
+complain() { printf 'install.sh: %s\n' "$*" >&2; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
@@ -165,9 +166,9 @@ cleanup() {
 verify() {
         local line
         line=$(awk -v f="$1" '$2 == f || $2 == "*" f' SHA256SUMS)
-        [ -n "$line" ] || die "$1 is not in the release's SHA256SUMS"
+        [ -n "$line" ] || { complain "$1 is not in the release's SHA256SUMS"; return 1; }
         printf '%s\n' "$line" | sha256sum -c --quiet - >/dev/null 2>&1 ||
-                die "$1 doesn't match the release's SHA256SUMS"
+                { complain "$1 doesn't match the release's SHA256SUMS"; return 1; }
 }
 
 # Why the release's attestation can't be checked, if it can't
@@ -185,8 +186,20 @@ no_attest() {
 attest() {
         gh attestation verify SHA256SUMS --repo "$REPO" \
                 --signer-workflow "$REPO/.github/workflows/ci.yml" >/dev/null 2>&1 ||
-                die "SHA256SUMS has no valid attestation from $REPO's CI (if the release is older than its attestations: --skip-attestation)"
+                { complain "SHA256SUMS has no valid attestation from $REPO's CI (if the release is older than its attestations: --skip-attestation)"; return 1; }
         say "Checked the release's attestation"
+}
+
+# Every file into the current dir, checked: 1 if one doesn't check out. It
+# runs in main's scope (url, bin, why, skip_attest).
+download() {
+        fetch "$url/SHA256SUMS" SHA256SUMS ||
+                die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
+        if [ -z "$skip_attest" ] && [ -z "$why" ]; then attest || return 1; fi
+        fetch "$url/$bin" "$bin" || die "release $tag has no $bin"
+        fetch "$url/$NAME-completions.tar.gz" "$NAME-completions.tar.gz" || die "release $tag has no completions"
+        fetch "$url/$NAME.1" "$NAME.1" || die "release $tag has no man page"
+        verify "$bin" && verify "$NAME-completions.tar.gz" && verify "$NAME.1"
 }
 
 # Install SRC as DEST, but beside it, until commit puts everything in place
@@ -262,7 +275,7 @@ remove_desktop() {
 # bash runs nothing instead of half of it
 main() {
         local tag='' kind='' yes='' strict='' skip_attest='' action=install
-        local arch url bin version found arg prefix current newest why checks
+        local arch url bin version found arg prefix current newest why checks try
 
         for arg; do
                 case $arg in
@@ -351,15 +364,14 @@ main() {
 
         say "Downloading $NAME $tag ($arch)"
         url=$GITHUB/$REPO/releases/download/$tag
-        fetch "$url/SHA256SUMS" SHA256SUMS ||
-                die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
-        [ -n "$skip_attest" ] || [ -n "$why" ] || attest
-        fetch "$url/$bin" "$bin" || die "release $tag has no $bin"
-        fetch "$url/$NAME-completions.tar.gz" "$NAME-completions.tar.gz" || die "release $tag has no completions"
-        fetch "$url/$NAME.1" "$NAME.1" || die "release $tag has no man page"
-        verify "$bin"
-        verify "$NAME-completions.tar.gz"
-        verify "$NAME.1"
+        # CI replaces nightly's files one by one, so for a moment they may
+        # not match its checksums yet: then it tries again
+        for try in 1 2 3; do
+                download && break
+                [ "$tag" = nightly ] && [ "$try" -lt 3 ] || die "the download doesn't check out, nothing was installed"
+                say "nightly may be being updated right now, trying again in 20 seconds"
+                sleep 20
+        done
         tar -xzf "$NAME-completions.tar.gz"
 
         # Everything goes beside its place first, so a failure (a full disk,

@@ -155,7 +155,8 @@ make
 
 | Command                     | What it does                                                  |
 |-----------------------------|---------------------------------------------------------------|
-| `make`                      | build `./__NAME__` (objects in `build/`)                      |
+| `make`                      | build `./__NAME__` (objects in `build/`), hardened            |
+| `make WERROR=1`             | the same, failing on any warning, like CI                     |
 | `make LUA=luajit`           | the same, with LuaJIT                                         |
 | `make debug`                | `-O0 -ggdb` with the address and undefined sanitizers         |
 | `make test`                 | build and run the tests, with the same sanitizers             |
@@ -165,7 +166,7 @@ make
 | `make install`              | program, man page and completions to `~/.local` (`PREFIX`, `DESTDIR`) |
 | `make uninstall`            | remove them                                                   |
 | `make static`               | `__NAME__-<arch>-static`, a static binary (needs musl-gcc)    |
-| `make appimage`             | `__NAME__-<arch>.AppImage`                                    |
+| `make appimage`             | `__NAME__-<arch>.AppImage` (downloads its pinned tools)       |
 | `make completions`          | `__NAME__-completions.tar.gz`                                 |
 | `make dist`                 | `__NAME__-<version>.tar.gz`, the source with the submodules   |
 | `make man`                  | `__NAME__.1`, the man page with its version                   |
@@ -196,10 +197,25 @@ uncommitted changes, and `unknown` outside git.
 CI builds and tests every push and pull request with gcc and clang, each with
 AddressSanitizer, LeakSanitizer and UndefinedBehaviorSanitizer, and again with
 ThreadSanitizer: a memory error, leak, undefined behavior or data race fails
-it. It also checks the code is formatted, and runs every file it's about to
-release: the binaries, the man page, and a build from the source tarball.
-Dependabot keeps the GitHub Actions and the submodules up to date with weekly
-pull requests.
+it, and so does any compiler warning. It also checks the code is formatted,
+and runs every file it's about to release: the binaries, the man page, and a
+build from the source tarball.
+
+What's released can be trusted to be what CI built from this repo:
+
+- Every release file is attested (signed as built by this workflow, from its
+  commit), and `install.sh` checks it.
+- The build is hardened by default: `_FORTIFY_SOURCE=3`, stack protector,
+  PIE and full RELRO.
+- Everything the build downloads (Lua, linuxdeploy, appimagetool and the
+  AppImage runtime) is pinned to a version and checked against its sha256
+  before every use, and the GitHub Actions are pinned to commits.
+- The tarballs are reproducible: built again from the same commit, they're
+  the same bytes.
+
+Dependabot keeps the GitHub Actions (their pinned commits) and the
+submodules up to date with weekly pull requests. The tools in the Makefile
+are updated by hand: their versions and checksums are together there.
 
 ## Contributing
 
