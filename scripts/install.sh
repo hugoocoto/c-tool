@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install __NAME__ from its GitHub releases, nothing to build:
 #
-#   curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash
 #
 # It asks what to install and where, suggesting what it finds: the latest
 # release, ~/.local, the kind already installed. Then it installs the binary
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 NAME=__NAME__
-REPO=${REPO:-hugoocoto/c-tool}
+REPO=${REPO:-__REPO__}
 GITHUB=${GITHUB:-https://github.com}
 
 usage() {
@@ -338,19 +338,21 @@ main() {
                 say "The latest release is ${newest:-none}"
         fi
         [ -n "$tag" ] || tag=${newest:-nightly}
-        ask tag "Version (vX.Y.Z or nightly)" "$tag"
-        case $tag in
-        [0-9]*) tag=v$tag ;;
-        '') die "the version can't be empty" ;;
-        esac
+        ask tag "Version (a release's tag, or nightly)" "$tag"
+        [ -n "$tag" ] || die "the version can't be empty"
 
-        # What the release has, from its SHA256SUMS
+        # What the release has, from its SHA256SUMS. 1.2.3 also finds v1.2.3.
         tmp=$(mktemp -d)
         trap cleanup EXIT
         cd "$tmp"
         url=$GITHUB/$REPO/releases/download/$tag
-        fetch "$url/SHA256SUMS" SHA256SUMS ||
-                die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
+        if ! fetch "$url/SHA256SUMS" SHA256SUMS 2>/dev/null; then
+                if [[ $tag != [0-9]* ]] || ! fetch "$GITHUB/$REPO/releases/download/v$tag/SHA256SUMS" SHA256SUMS 2>/dev/null; then
+                        die "$REPO has no release $tag, or it has no SHA256SUMS (releases: $GITHUB/$REPO/releases)"
+                fi
+                tag=v$tag
+                url=$GITHUB/$REPO/releases/download/$tag
+        fi
         kinds=()
         if has "$NAME-$arch-static"; then kinds+=(static); fi
         if has "$NAME-$arch.AppImage"; then kinds+=(appimage); fi

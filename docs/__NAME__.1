@@ -1,20 +1,32 @@
 .TH __NAME_UPPER__ 1 "@DATE@" "__NAME__ @VERSION@" "User Commands"
 .SH NAME
-__NAME__ \- greet everyone listed in a Lua config
+__NAME__ \- __DESCRIPTION_LOWER__
 .SH SYNOPSIS
 .B __NAME__
 .RB [ \-h ]
+.RB [ \-\-completions
+.IR shell ]
 .RB [ \-v ]
 .RB [ \-c
 .IR file ]
 .SH DESCRIPTION
 .B __NAME__
-prints a greeting for every name in its config, as many times as the config
-says.
+__DESCRIPTION_LOWER__.
 .SH OPTIONS
 .TP
 .BR \-h ", " \-\-help
 Show the help and exit.
+.TP
+.BR \-\-completions " " \fIshell\fR
+Print the completion script for
+.IR shell ,
+which is
+.BR bash ,
+.B zsh
+or
+.BR fish ,
+and exit. For example:
+.B source <(__NAME__ \-\-completions bash)
 .TP
 .BR \-v ", " \-\-version
 Show the version and exit.
@@ -43,15 +55,12 @@ table. Every field is optional:
 .RS
 .nf
 Config = {
-    greeting = "Hello",           -- default "Hello"
-    times = 1,                    -- default 1
-    names = { "world", "you" },   -- default { "world" }
 }
 .fi
 .RE
 .SH EXIT STATUS
 0 on success, 1 if the arguments or the config are wrong.
 .SH AUTHOR
-Hugo Coto Florez <hugocoto100305@gmail.com>
+__AUTHOR__ <__EMAIL__>
 .SH SEE ALSO
 .BR lua (1)

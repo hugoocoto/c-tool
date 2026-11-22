@@ -6,6 +6,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: ci(deps) # pull request titles must be Conventional Commits
     groups:
       actions:
         patterns: ["*"]
@@ -14,6 +16,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build(deps)
     groups:
       submodules:
         patterns: ["*"]

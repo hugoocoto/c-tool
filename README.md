@@ -1,24 +1,28 @@
 # \_\_NAME\_\_
 
-[![CI](https://github.com/hugoocoto/c-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/hugoocoto/c-tool/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/hugoocoto/c-tool)](https://github.com/hugoocoto/c-tool/releases/latest)
-[![License](https://img.shields.io/github/license/hugoocoto/c-tool)](LICENSE)
+[![CI](https://github.com/__REPO__/actions/workflows/ci.yml/badge.svg)](https://github.com/__REPO__/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/__REPO__)](https://github.com/__REPO__/releases/latest)
+[![License](https://img.shields.io/github/license/__REPO__)](LICENSE)
 
-Greet everyone listed in a Lua config.
+\_\_DESCRIPTION\_\_.
 
 <!-- template-init: remove from here -->
 > **This is a template for C command line tools.** Create a repo from it
 > (GitHub's *Use this template* button, or a copy), clone it with
 > `--recursive` and run `scripts/template-init.sh`. It asks for the name, a
-> one-line description, the GitHub repo and the author, suggesting what it
-> finds in git, and which optional parts to keep: the Typst manual, the man
-> page, the shell completions, the AppImage, the static binary, GitHub
-> releases, the install script, the git hooks, Dependabot and the issue and
-> pull request templates. Then it removes the rest, names everything after
-> the project (`__NAME__` is the placeholder for the name, so the word
-> "template" is never touched), puts you in as the author, registers the
-> submodules, removes this note and deletes itself. What's left to write is
-> the program, its tests, and the [Usage](#usage) and
+> one-line description, the GitHub repo, the author and their email, and
+> the license (GPL-3.0-or-later, MIT, Apache-2.0, BSD-2-Clause, MPL-2.0 or
+> none), suggesting what it finds in git, and which optional parts to keep:
+> the Typst manual, the man page, the shell completions, the AppImage, the
+> static binary, GitHub releases, the install script, the git hooks,
+> Dependabot, the issue and pull request templates and the macOS build.
+> Then it removes the rest and fills in the placeholders: everything that
+> names the project, its repo or its author is one (`__NAME__`, `__REPO__`,
+> `__AUTHOR__`, `__EMAIL__`...), so nothing else is ever touched, and none
+> of this template's own details end up in your project. It registers the
+> submodules, removes this note, `template/` and itself, and offers to set
+> up the GitHub repo (`scripts/github-setup.sh`). What's left to write is the
+> program, its tests, and the [Usage](#usage) and
 > [Configuration](#configuration) sections of this README, which say so in
 > comments.
 
@@ -27,7 +31,7 @@ Greet everyone listed in a Lua config.
 
 <!-- template-init: begin install -->
 ```sh
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash
 ```
 
 It asks what to install and where, with its suggestion filled in (Enter
@@ -41,13 +45,13 @@ repo. Nothing is replaced until it all checks out. Arguments, after
 (`--help` lists them all):
 
 ```sh
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- v1.2.3     # that release
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- nightly    # the last commit on main
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- --appimage # the AppImage instead
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- --strict   # fail without the attestation check
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- uninstall
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | bash -s -- --yes      # no questions
-curl -fsSL https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh | PREFIX=~/opt bash     # somewhere else
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash -s -- v1.2.3     # that release
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash -s -- nightly    # the last commit on main
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash -s -- --appimage # the AppImage instead
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash -s -- --strict   # fail without the attestation check
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash -s -- uninstall
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | bash -s -- --yes      # no questions
+curl -fsSL https://github.com/__REPO__/releases/latest/download/install.sh | PREFIX=~/opt bash     # somewhere else
 ```
 
 <!-- template-init: begin appimage -->
@@ -67,11 +71,11 @@ The script comes from the latest release, attested like everything in it. To
 check it before running it:
 
 ```sh
-curl -fsSLO https://github.com/hugoocoto/c-tool/releases/latest/download/install.sh
-gh attestation verify install.sh --repo hugoocoto/c-tool && bash install.sh
+curl -fsSLO https://github.com/__REPO__/releases/latest/download/install.sh
+gh attestation verify install.sh --repo __REPO__ && bash install.sh
 ```
 
-The same checks any file you downloaded yourself: `gh attestation verify <file> --repo hugoocoto/c-tool`.
+The same checks any file you downloaded yourself: `gh attestation verify <file> --repo __REPO__`.
 
 If `~/.local/bin` is not in your `PATH` yet, add it to your shell's config.
 <!-- template-init: begin completions -->
@@ -120,6 +124,9 @@ install -Dm644 __NAME__.1 ~/.local/share/man/man1/__NAME__.1
 
 <!-- template-init: end man -->
 <!-- template-init: begin completions -->
+Or have `__NAME__` print them, e.g. `source <(__NAME__ --completions bash)` in
+`~/.bashrc` (also `zsh` and `fish`):
+
 ```sh
 tar -xzf __NAME__-completions.tar.gz && cd __NAME__-completions
 install -Dm644 __NAME__.bash ~/.local/share/bash-completion/completions/__NAME__
@@ -136,16 +143,19 @@ See [Building](#building). `make install` installs it in `~/.local` (or
 
 ## Usage
 
-<!-- Your program's --help. Keep it in sync with the flags, like everything
-CONTRIBUTING.md's Documentation lists. -->
+<!-- Your program's --help, exactly: `make test` fails until it is (see
+Documentation in CONTRIBUTING.md). -->
 
 ```
-__NAME__ [-h] [-v] [-c C]
+usage: __NAME__ [-h] [--completions C] [-v] [-c C]
+
+__DESCRIPTION__
 
 options:
- --help, -h      Show this help
- --version, -v   Show version and exit
- --config, -c C  Use this config file
+ --help, -h       Show this help
+ --completions C  Print completions for bash, zsh or fish
+ --version, -v    Show version and exit
+ --config, -c C   Use this config file
 ```
 
 <!-- template-init: begin man -->
@@ -166,9 +176,6 @@ that one.
 
 ```lua
 Config = {
-    greeting = "Hello",
-    times = 1,
-    names = { "world", os.getenv("USER") },
 }
 ```
 
@@ -189,9 +196,14 @@ LuaJIT, with `make LUA=lua5.1` or `make LUA=luajit`):
 Debian/Ubuntu.
 
 <!-- template-init: end static -->
+<!-- template-init: begin macos -->
+On macOS, it needs Homebrew's Lua and GNU make, as macOS's own make is too
+old: `brew install lua make`, then `gmake` wherever this says `make`.
+
+<!-- template-init: end macos -->
 
 ```sh
-git clone --recursive https://github.com/hugoocoto/c-tool __NAME__
+git clone --recursive https://github.com/__REPO__ __NAME__
 cd __NAME__
 make
 ./__NAME__ --version
@@ -211,11 +223,10 @@ make
 | `make uninstall`            | remove them                                                   |
 | `make static`               | `__NAME__-<arch>-static`, a static binary (needs musl-gcc)    |
 | `make appimage`             | `__NAME__-<arch>.AppImage` (downloads its pinned tools)       |
-| `make completions`          | `__NAME__-completions.tar.gz`                                 |
+| `make completions`          | `__NAME__-completions.tar.gz`, from `__NAME__ --completions`  |
 | `make dist`                 | `__NAME__-<version>.tar.gz`, the source with the submodules   |
 | `make man`                  | `__NAME__.1`, the man page with its version                   |
 | `make docs`                 | `docs/*.typ` to PDF (needs typst)                             |
-| `make changelog`            | `CHANGELOG.md`, from the commit messages                      |
 | `make clean`                | remove what the build made                                    |
 | `make distclean`            | also the downloads and everything packaged                    |
 
@@ -230,31 +241,36 @@ uncommitted changes, and `unknown` outside git.
 <!-- template-init: begin releases -->
 - Every push to main that passes CI updates the
   [nightly](../../releases/tag/nightly) release.
-- Releases are made with `scripts/release.sh`: it asks for the new version
-  (bigger than the last one), suggesting the next one from the commits since
-  the last release (major if they remove things, minor if they add things,
-  else patch), tags main with it and pushes the tag, and CI
-  builds and publishes the release.
-- Each release's notes list its commits, grouped in Added, Changed, Fixed and
-  Removed by their first word, and `CHANGELOG.md` in every release has them
-  for all releases.
+- [release-please](https://github.com/googleapis/release-please) keeps a pull
+  request open with the next version and `CHANGELOG.md`, from the Conventional
+  Commits on main: `fix` is a patch, `feat` a minor version, and a breaking
+  change a major one (minor before 1.0.0). Merging it tags the release, and CI
+  builds, checks and publishes it.
 
 <!-- template-init: end releases -->
 ## CI
 
-CI builds and tests every push and pull request with gcc and clang, each with
-AddressSanitizer, LeakSanitizer and UndefinedBehaviorSanitizer, and again with
-ThreadSanitizer: a memory error, leak, undefined behavior or data race fails
-it, and so does any compiler warning or anything clang's static analyzer
-finds. It also checks the code is formatted, runs every file it packages,
-and builds the source tarball on its own.
+CI builds and tests every push to main and every pull request with gcc and
+clang, each with AddressSanitizer, LeakSanitizer and
+UndefinedBehaviorSanitizer, and again with ThreadSanitizer: a memory error,
+leak, undefined behavior or data race fails it, and so does any compiler
+warning or anything clang's static analyzer finds. It also checks the code
+is formatted and the docs match `--help`, runs every file it packages, and
+builds the source tarball on its own.
+<!-- template-init: begin macos -->
+It builds and runs the tests on macOS too.
+<!-- template-init: end macos -->
+<!-- template-init: begin install -->
+It runs the install script on what it packaged before anything is
+published, and again on each release once it is.
+<!-- template-init: end install -->
 
-- The build is hardened by default: `_FORTIFY_SOURCE=3`, stack protector,
-  PIE and full RELRO.
+- The build is hardened by default: `_FORTIFY_SOURCE=3`, stack protector
+  and PIE, and on Linux, stack clash protection and full RELRO.
 - Everything the build downloads is pinned to a version and checked against
   its sha256 before every use, and the GitHub Actions are pinned to commits.
 - The tarballs are reproducible: built again from the same commit, they're
-  the same bytes.
+  the same bytes. CI builds them twice to check.
 <!-- template-init: begin releases -->
 - Every release file is attested (signed as built by this workflow, from its
   commit), so it can be checked to be what CI built from this repo.
@@ -281,7 +297,9 @@ Bug reports, ideas and pull requests are welcome.
 
 ## License
 
-Copyright (C) 2026 Hugo Coto Florez
+Copyright (C) \_\_YEAR\_\_ \_\_AUTHOR\_\_
 
-GPL-3.0-or-later, see [LICENSE](LICENSE). The libraries in `src/thirdparty/`
-keep their own licenses.
+<!-- template-init: begin license -->
+\_\_LICENSE\_\_, see [LICENSE](LICENSE).
+<!-- template-init: end license -->
+The libraries in `src/thirdparty/` keep their own licenses.

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Changelog from the commit messages (merges left out), grouped by their first
-# word: Add..., Fix..., Remove... (see Commit messages in CONTRIBUTING.md).
+# Changelog from the commit messages (merges left out), grouped by their
+# Conventional Commit type (see Commit messages in CONTRIBUTING.md). It's for
+# the nightly release: real releases have release-please's CHANGELOG.md.
 #
 #   scripts/changelog.sh        the whole changelog, newest first: what's not
-#                               released yet, then every vX.Y.Z release
-#   scripts/changelog.sh REF    only one section: a release (v1.2.3), or what
-#                               REF has that isn't released (HEAD)
+#                               released yet, then every release
+#   scripts/changelog.sh REF    only one section: a release's tag, or what REF
+#                               has that isn't released (HEAD)
 #
-# Run it in the repo. CI attaches it to every release as CHANGELOG.md, and uses
-# the release's own section as its notes.
+# Run it in the repo.
 set -euo pipefail
 
 git rev-parse --verify --quiet HEAD >/dev/null || { echo "changelog: no commits" >&2; exit 1; }
@@ -18,12 +18,12 @@ slug=${GITHUB_REPOSITORY:-$(git remote get-url origin 2>/dev/null |
         sed -nE 's#^.*github\.com[:/]+([^/]+/[^/]+)$#\1#p' | sed 's/\.git$//')}
 url=${slug:+https://github.com/$slug}
 
-# Releases are vX.Y.Z tags, like scripts/release.sh makes
-RELEASES='v[0-9]*.[0-9]*.[0-9]*'
-is_release() { [[ $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && git rev-parse --verify --quiet "refs/tags/$1" >/dev/null; }
+# Releases are the tags ending in a version, however release-please is set to
+# write them (1.2.3, v1.2.3, name-v1.2.3). nightly is a tag that moves.
+is_release() { [[ $1 =~ (^|[-v])[0-9]+\.[0-9]+\.[0-9]+$ ]] && git rev-parse --verify --quiet "refs/tags/$1" >/dev/null; }
 
 # The newest release reachable from $1 (itself included), if any
-last_release() { git describe --tags --abbrev=0 --match "$RELEASES" "$1" 2>/dev/null || true; }
+last_release() { git describe --tags --abbrev=0 --exclude nightly "$1" 2>/dev/null || true; }
 
 # section TITLE FROM TO: the commits in FROM..TO (or everything up to TO)
 section() {
@@ -38,18 +38,16 @@ section() {
         {
                 hash = $1
                 msg = substr($0, length(hash) + 2)
-                word = tolower(msg)
-                sub(/[^a-z].*/, "", word)
-                if (word ~ /^(add|new|implement|introduc|support)/) group = "Added"
-                else if (word ~ /^(fix|correct|repair)/) group = "Fixed"
-                else if (word ~ /^(remov|delet|drop)/) group = "Removed"
+                if (msg ~ /^[a-z]+(\([^)]*\))?!: /) group = "Breaking"
+                else if (msg ~ /^feat(\([^)]*\))?: /) group = "Added"
+                else if (msg ~ /^fix(\([^)]*\))?: /) group = "Fixed"
                 else group = "Changed"
                 short = substr(hash, 1, 7)
                 ref = url ? "[" short "](" url "/commit/" hash ")" : short
                 items[group] = items[group] "- " msg " (" ref ")\n"
         }
         END {
-                split("Added Changed Fixed Removed", order, " ")
+                split("Breaking Added Changed Fixed", order, " ")
                 for (i = 1; i <= 4; i++)
                         if (order[i] in items) printf "\n### %s\n\n%s", order[i], items[order[i]]
         }'
@@ -79,6 +77,6 @@ fi
 echo "# Changelog"
 echo
 one HEAD
-for tag in $(git tag --list "$RELEASES" --merged HEAD --sort=-v:refname); do
-        one "$tag"
+for tag in $(git tag --list --merged HEAD --sort=-v:refname); do
+        if is_release "$tag"; then one "$tag"; fi
 done

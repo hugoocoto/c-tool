@@ -1,13 +1,20 @@
+# GNU make 4.2 or newer: macOS's own make is 3.81 (brew install make, and run
+# gmake)
+ifeq ($(filter-out 3.% 4.0 4.0.% 4.1 4.1.%,$(MAKE_VERSION)),)
+$(error GNU make 4.2 or newer is needed, this is $(MAKE_VERSION) (on macOS: brew install make, and run gmake))
+endif
+
 # Project name: the binary, ~/.config/$(NAME)/ and everything named after it
 NAME := __NAME__
 # template-init: begin appimage
 # For the AppImage's menu entry
-DESCRIPTION := Greet everyone listed in a Lua config
+DESCRIPTION := __DESCRIPTION__
 # template-init: end appimage
 
-# vX.Y.Z[-N-gHASH][-dirty] from git, else the VERSION file that `make dist`
-# puts in tarballs, else nothing (and the code falls back to "unknown")
-VERSION := $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null)
+# The last release's tag[-N-gHASH][-dirty] from git, else the VERSION file
+# that `make dist` puts in tarballs, else nothing (and the code falls back to
+# "unknown"). nightly is a tag that moves, not a version.
+VERSION := $(shell git describe --tags --exclude nightly --always --dirty 2>/dev/null)
 ifeq ($(VERSION),)
 VERSION := $(shell cat VERSION 2>/dev/null)
 endif
@@ -16,8 +23,9 @@ DATE := $(shell git log -1 --format=%cs 2>/dev/null || date +%F)
 # so building a commit again gives the same files
 SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
 export SOURCE_DATE_EPOCH
-# Tarballs with only what's in them: no dates, owners or umask
-TAR := tar --sort=name --mtime=@$(SOURCE_DATE_EPOCH) --owner=0 --group=0 --numeric-owner --mode=go-w --format=gnu
+# Tarballs with only what's in them: no dates, owners or umask (every file
+# rw-r--r--, or rwxr-xr-x if it's executable or a dir)
+TAR := tar --sort=name --mtime=@$(SOURCE_DATE_EPOCH) --owner=0 --group=0 --numeric-owner --mode=a=rX,u+w --format=gnu
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -50,10 +58,17 @@ include $(THIRDPARTY)/conf/CONF_FLAGS
 
 # Hardened by default: buffer overflow checks (_FORTIFY_SOURCE, which needs
 # optimization, so `make debug` and `make test` leave it out), stack canaries,
-# and a position independent binary with read-only relocations
-HARDEN_CFLAGS := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fPIE
+# and a position independent binary, plus, on Linux and the other ELF
+# systems, stack clash protection and read-only relocations, which macOS's
+# compiler and linker don't have
+HARDEN_CFLAGS := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fPIE
+HARDEN_LDFLAGS := -pie
+ifneq ($(shell uname -s),Darwin)
+HARDEN_CFLAGS += -fstack-clash-protection
+HARDEN_LDFLAGS += -Wl,-z,relro,-z,now
+endif
 CFLAGS ?= -O2 $(HARDEN_CFLAGS)
-LDFLAGS ?= -pie -Wl,-z,relro,-z,now
+LDFLAGS ?= $(HARDEN_LDFLAGS)
 # `make WERROR=1` (CI) makes every warning an error
 WARN = -Wall -Wextra -Wformat=2 -Wshadow $(if $(WERROR),-Werror)
 # The libraries are -isystem: their warnings are theirs, not this project's
@@ -72,6 +87,8 @@ DEBUG_FLAGS = -O0 -ggdb $(SAN_FLAGS)
 
 SRC := $(shell find src -name '*.c' -not -path '$(THIRDPARTY)/*')
 OBJ := $(SRC:%.c=$(BUILD)/%.o)
+# -MMD leaves out the -isystem headers, so a submodule update wouldn't rebuild
+LIB_HEADERS := $(wildcard $(THIRDPARTY)/*/*.h)
 
 # Rebuild everything when the flags or the version change (e.g. after `make debug`)
 FLAGS := $(CC) $(ALL_CFLAGS) $(CPPFLAGS) $(DEFINES) $(LDFLAGS) $(LDLIBS)
@@ -88,7 +105,7 @@ all: $(BIN)
 $(BIN): $(OBJ) $(BUILD)/.flags
 	$(CC) $(LDFLAGS) $(OBJ) $(LDLIBS) -o $@
 
-$(BUILD)/%.o: %.c $(BUILD)/.flags
+$(BUILD)/%.o: %.c $(BUILD)/.flags $(LIB_HEADERS)
 	@mkdir -p $(@D)
 	$(CC) $(ALL_CFLAGS) $(CPPFLAGS) $(DEFINES) -MMD -MP -c $< -o $@
 
@@ -125,7 +142,7 @@ analyze:
 	done
 
 # clang-format with .clang-format. CI checks with clang-format $(CLANG_FORMAT_VERSION)
-# (pip install clang-format==$(CLANG_FORMAT_VERSION)): other versions may format differently.
+# (pipx install clang-format==$(CLANG_FORMAT_VERSION)): other versions may format differently.
 CLANG_FORMAT ?= clang-format
 CLANG_FORMAT_VERSION := 22.1.8
 FORMAT_SRC = $(shell find src test -name '*.[ch]' -not -path '$(THIRDPARTY)/*')
@@ -142,6 +159,15 @@ docs:
 	@find docs -name '*.typ' | while read -r f; do echo "typst compile $$f"; typst compile "$$f" || exit 1; done
 # template-init: end docs
 
+# template-init: begin completions
+COMPLETIONS := $(BUILD)/$(NAME)-completions
+$(COMPLETIONS): $(BIN)
+	rm -rf $@ && mkdir -p $@
+	$(abspath $(BIN)) --completions bash >$@/$(NAME).bash
+	$(abspath $(BIN)) --completions zsh >$@/_$(NAME)
+	$(abspath $(BIN)) --completions fish >$@/$(NAME).fish
+# template-init: end completions
+
 # template-init: begin man
 # The man page with its version and date, $(NAME).1 (attached to releases)
 .PHONY: man
@@ -153,16 +179,23 @@ $(BUILD)/$(NAME).1: docs/$(NAME).1 $(BUILD)/.flags
 
 install: $(BUILD)/$(NAME).1
 # template-init: end man
+# template-init: begin completions
+install: $(COMPLETIONS)
+# template-init: end completions
 
+# install -d, then install: macOS's install has no -D
 install: $(NAME)
-	install -Dm755 $(NAME) $(DESTDIR)$(BINDIR)/$(NAME)
+	install -d $(DESTDIR)$(BINDIR)
+	install -m755 $(NAME) $(DESTDIR)$(BINDIR)/$(NAME)
 # template-init: begin man
-	install -Dm644 $(BUILD)/$(NAME).1 $(DESTDIR)$(MANDIR)/$(NAME).1
+	install -d $(DESTDIR)$(MANDIR)
+	install -m644 $(BUILD)/$(NAME).1 $(DESTDIR)$(MANDIR)/$(NAME).1
 # template-init: end man
 # template-init: begin completions
-	install -Dm644 completions/$(NAME).bash $(DESTDIR)$(BASHCOMPDIR)/$(NAME)
-	install -Dm644 completions/_$(NAME) $(DESTDIR)$(ZSHCOMPDIR)/_$(NAME)
-	install -Dm644 completions/$(NAME).fish $(DESTDIR)$(FISHCOMPDIR)/$(NAME).fish
+	install -d $(DESTDIR)$(BASHCOMPDIR) $(DESTDIR)$(ZSHCOMPDIR) $(DESTDIR)$(FISHCOMPDIR)
+	install -m644 $(COMPLETIONS)/$(NAME).bash $(DESTDIR)$(BASHCOMPDIR)/$(NAME)
+	install -m644 $(COMPLETIONS)/_$(NAME) $(DESTDIR)$(ZSHCOMPDIR)/_$(NAME)
+	install -m644 $(COMPLETIONS)/$(NAME).fish $(DESTDIR)$(FISHCOMPDIR)/$(NAME).fish
 # template-init: end completions
 
 uninstall:
@@ -293,35 +326,31 @@ FORCE:
 # template-init: end static
 
 # Source tarball with the submodules and a VERSION file (GitHub's own
-# tarballs have neither)
+# tarballs have neither): what git tracks, but what's deleted already
 dist:
 	@test -n "$(VERSION)" || { echo "dist: no version, not a git checkout?"; exit 1; }
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/$(NAME)-$(VERSION)
-	git ls-files --recurse-submodules | tar -cf - -T - | tar -xf - -C $(BUILD)/dist/$(NAME)-$(VERSION)
+	git ls-files --recurse-submodules | while IFS= read -r f; do [ ! -e "$$f" ] || echo "$$f"; done | \
+		tar -cf - -T - | tar -xf - -C $(BUILD)/dist/$(NAME)-$(VERSION)
 	echo $(VERSION) >$(BUILD)/dist/$(NAME)-$(VERSION)/VERSION
 	$(TAR) -cf - -C $(BUILD)/dist $(NAME)-$(VERSION) | gzip -9n >$(NAME)-$(VERSION).tar.gz
 
 # template-init: begin completions
-# The completions on their own, released beside the binaries
+# The bash, zsh and fish completions, printed by the program itself
+# (`--completions SHELL`, from flag.h), so they have every flag, and released
+# beside the binaries as $(NAME)-completions.tar.gz
 .PHONY: completions
-completions:
-	$(TAR) --transform 's|^completions|$(NAME)-completions|' -cf - completions | gzip -9n >$(NAME)-completions.tar.gz
-# template-init: end completions
+completions: $(NAME)-completions.tar.gz
 
-# template-init: begin releases
-# Grouped commit messages since the first release, like each release has
-.PHONY: changelog
-changelog:
-	@mkdir -p $(BUILD)
-	scripts/changelog.sh >$(BUILD)/CHANGELOG.md
-	mv $(BUILD)/CHANGELOG.md CHANGELOG.md
-# template-init: end releases
+$(NAME)-completions.tar.gz: $(COMPLETIONS)
+	$(TAR) -cf - -C $(BUILD) $(NAME)-completions | gzip -9n >$@
+# template-init: end completions
 
 version:
 	@echo $(or $(VERSION),unknown)
 
 # template-init: begin hooks
-# Run the tests before every `git push`
+# Check every commit message, and run the tests before every `git push`
 .PHONY: hooks
 hooks:
 	git config core.hooksPath scripts/hooks
@@ -329,7 +358,7 @@ hooks:
 
 # What the build makes. The downloaded tools and Lua are kept.
 clean:
-	rm -rf $(NAME) $(NAME).1 CHANGELOG.md $(BUILD)/.flags $(BUILD)/src $(BUILD)/test $(BUILD)/AppDir $(BUILD)/dist $(BUILD)/static $(BUILD)/$(NAME).*
+	rm -rf $(NAME) $(NAME).1 $(BUILD)/.flags $(BUILD)/src $(BUILD)/test $(BUILD)/AppDir $(BUILD)/dist $(BUILD)/static $(BUILD)/$(NAME).* $(BUILD)/$(NAME)-completions
 
 # Back to a fresh clone: also the downloads and every package
 distclean: clean

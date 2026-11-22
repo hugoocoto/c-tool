@@ -1,0 +1,3 @@
+#!/bin/sh
+# Enabled with `make hooks`. Skip it once with `git commit --no-verify`.
+exec scripts/check-commit.sh --file "$1"

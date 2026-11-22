@@ -1,5 +1,7 @@
 <!-- What does this change, and why? Link the issue it fixes: Fixes #123 -->
 
+- [ ] The title is a Conventional Commit (`feat: add --quiet`): it becomes the
+      commit on main, and the changelog
 - [ ] `make test` and `make test SANITIZE=thread` pass, built with `WERROR=1`
 - [ ] `make analyze` passes
 - [ ] New behavior has a test in `test/`

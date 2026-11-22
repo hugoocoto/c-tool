@@ -1,0 +1,49 @@
+name: Release Please
+
+# Keeps a release pull request open with the next version and CHANGELOG.md,
+# from the Conventional Commits on main. Merging it makes the tag and a draft
+# release, and starts CI on that tag: CI tests and builds it, attaches the
+# files, and only then publishes the release, so releases/latest always has
+# them. Not in the template itself, only in the projects made from it.
+#
+# It uses the RELEASE_PLEASE_TOKEN secret if there is one. With the default
+# GITHUB_TOKEN it works too, but GitHub runs no checks on the pull requests
+# that token opens, so if main requires them the release can't be merged.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One at a time: two runs could otherwise release the same commit
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the tag, the draft release and the pull request's branch
+      pull-requests: write
+      actions: write # to start CI on the tag
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # If this fails the release stays a draft. To finish it:
+      # gh workflow run ci.yml --ref TAG
+      - name: Build and publish the release
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
